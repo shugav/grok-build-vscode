@@ -27,8 +27,9 @@ const DEFAULT_BYTE_LIMIT = 40_000;
 
 /**
  * Manages background processes spawned on behalf of the agent's `terminal/*`
- * ACP requests. Each terminal is a headless `sh -c <command>` child process
- * whose stdout+stderr is captured into a single rolling buffer respecting
+ * ACP requests. Each terminal is a headless shell child process (cmd.exe on
+ * Windows, /bin/sh elsewhere — picked by Node when `shell: true`) whose
+ * stdout+stderr is captured into a single rolling buffer respecting
  * `outputByteLimit`.
  */
 export class TerminalManager {
@@ -39,7 +40,7 @@ export class TerminalManager {
     const env = this.envFromParams(params.env);
     const cwd = params.cwd || process.cwd();
     const byteLimit = params.outputByteLimit ?? DEFAULT_BYTE_LIMIT;
-    const proc = spawn("/bin/sh", ["-c", params.command], { cwd, env });
+    const proc = spawn(params.command, { cwd, env, shell: true });
 
     const entry: TerminalEntry = {
       proc,
