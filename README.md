@@ -4,7 +4,7 @@
 
 Native VS Code sidebar for **xAI's Grok Build** CLI, driven by `grok agent stdio` over the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
 
-This extension fills the VS Code gap. Not affiliated with xAI.
+This extension fills the VS Code gap. Works with SuperGrok Heavy subscription or xAI API key. Not affiliated with xAI.
 
 ![Welcome screen and mode picker](docs/screenshots/start.png)
 
@@ -48,7 +48,10 @@ Or add it to `.env` in your workspace root — the extension loads it automatica
 <details>
 <summary><strong>Install</strong></summary>
 
-**Quick install (no build required):**
+**Simplest installation via VS Code**
+![VS Code Extensions Marketplace](docs/screenshots/install.png)
+
+VSIX from this repo (no build required):
 
 Download the latest VSIX from [`releases/`](releases/) and install it:
 
