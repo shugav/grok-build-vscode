@@ -21,7 +21,7 @@ find_code_cli() {
 }
 
 code=$(find_code_cli)
-echo "Uninstalling phuryn.grok-vscode via $code"
-"$code" --uninstall-extension phuryn.grok-vscode
+echo "Uninstalling PawelHuryn.grok-vscode-phuryn via $code"
+"$code" --uninstall-extension PawelHuryn.grok-vscode-phuryn
 echo
 echo "Done. Reload VS Code to drop the sidebar."

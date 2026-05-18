@@ -448,6 +448,7 @@ textarea#input:focus {
   min-width: 0;
   align-items: center;
   scrollbar-width: none;
+  padding-left: 4px;
 }
 #chips::-webkit-scrollbar { display: none; }
 
@@ -499,6 +500,14 @@ textarea#input:focus {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+}
+.context-donut::after {
+  content: '';
+  display: block;
+  width: 1px;
+  height: 12px;
+  background: var(--vscode-widget-border, rgba(128,128,128,0.3));
+  margin-left: 4px;
 }
 
 /* ---- slash popover ---- */

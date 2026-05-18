@@ -4,7 +4,7 @@ VS Code sidebar extension for **xAI's Grok Build CLI**, driven by `grok agent st
 
 ## Status
 
-v0.1 (working, pre-publish, not in marketplace yet). 58 unit tests passing. Smoke-tested end-to-end against `grok` v0.1.211 on Linux and Windows-via-WSL.
+v0.1 (working, pre-publish, not in marketplace yet). 61 unit tests passing. Smoke-tested end-to-end against `grok` v0.1.211 on Linux and Windows-via-WSL.
 
 ## Module map
 
@@ -21,7 +21,7 @@ v0.1 (working, pre-publish, not in marketplace yet). 58 unit tests passing. Smok
 | `src/slash-filter.ts` | Slash-command autocomplete filter |
 | `media/chat.{js,css}` | Webview UI |
 | `scripts/install.{ps1,sh}` | Auto-detect VS Code CLI, build .vsix, install |
-| `scripts/uninstall.{ps1,sh}` | Uninstall `phuryn.grok-vscode` |
+| `scripts/uninstall.{ps1,sh}` | Uninstall `PawelHuryn.grok-vscode-phuryn` |
 
 Pure modules (`acp-dispatch`, `chips`, `prompt-builder`, `slash-filter`, `cli-locator`) were split out specifically so protocol behavior can be unit-tested without spawning processes.
 
@@ -29,8 +29,8 @@ Pure modules (`acp-dispatch`, `chips`, `prompt-builder`, `slash-filter`, `cli-lo
 
 ```bash
 npm install
-npm test         # 58 tests, <1s, vitest
-npm run package  # → grok-vscode-0.1.0.vsix
+npm test         # 61 tests, <1s, vitest
+npm run package  # → grok-vscode-phuryn-1.0.0.vsix
 ```
 
 ## Install
@@ -77,7 +77,7 @@ See `README.md § Install` for the full per-platform matrix.
 
 ## Publishing (when ready)
 
-One-time: register `phuryn` publisher at marketplace.visualstudio.com/manage, generate Azure DevOps PAT with *Marketplace > Manage* scope, `npx @vscode/vsce login phuryn`.
+One-time: register `PawelHuryn` publisher at marketplace.visualstudio.com/manage, generate Azure DevOps PAT with *Marketplace > Manage* scope, `npx @vscode/vsce login PawelHuryn`.
 
 Per-release: bump version in `package.json`, `npm test`, `npm run publish`.
 
@@ -87,4 +87,4 @@ Per-release: bump version in `package.json`, `npm test`, `npm run publish`.
 - Commits explain the *why*, not the *what*
 - Don't introduce abstractions speculatively
 - Don't add comments that explain what well-named code already says
-- 58 tests is the floor — every PR should keep that green
+- 61 tests is the floor — every PR should keep that green

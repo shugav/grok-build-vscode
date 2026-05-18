@@ -1,9 +1,9 @@
 {
-  "name": "grok-vscode",
+  "name": "grok-vscode-phuryn",
   "displayName": "Grok Build",
-  "description": "[Community] Run xAI's Grok Build CLI inside VS Code — a chat sidebar driven by `grok agent stdio` over ACP. Community extension, not affiliated with or endorsed by xAI.",
+  "description": "[Community] VS Code sidebar for xAI's Grok Build CLI. Streaming AI chat with thinking traces, permission cards with diff preview, YOLO mode, reasoning effort selector, model picker, slash command autocomplete, and file context chips. Driven by grok agent stdio over ACP. Not affiliated with xAI.",
   "version": "1.0.0",
-  "publisher": "phuryn",
+  "publisher": "PawelHuryn",
   "author": {
     "name": "Paweł Huryn",
     "url": "https://www.productcompass.pm"
@@ -17,7 +17,7 @@
     "vscode": "^1.94.0"
   },
   "categories": ["AI", "Chat"],
-  "keywords": ["grok", "xai", "acp", "agent", "ai"],
+  "keywords": ["grok", "grok-build", "xai", "acp", "agent", "ai", "coding-assistant", "chat", "mcp"],
   "icon": "resources/grok-icon.png",
   "main": "./out/extension.js",
   "activationEvents": ["onStartupFinished"],

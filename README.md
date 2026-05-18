@@ -6,6 +6,8 @@ Native VS Code sidebar for **xAI's Grok Build** CLI, driven by `grok agent stdio
 
 xAI's docs list Zed, Neovim, Emacs, and marimo as ACP-compatible. This extension fills the VS Code gap.
 
+Not affiliated with xAI.
+
 ![Welcome screen and mode picker](docs/screenshots/start.png)
 
 ---
@@ -48,6 +50,16 @@ Or add it to `.env` in your workspace root — the extension loads it automatica
 <details>
 <summary><strong>Install</strong></summary>
 
+**Quick install (no build required):**
+
+Download the latest VSIX from [`releases/`](releases/) and install it:
+
+```bash
+code --install-extension releases/grok-vscode-phuryn-1.0.0.vsix
+```
+
+Or install from source — clone, build, and install in one step:
+
 ```bash
 git clone https://github.com/phuryn/grok-build-vscode.git
 cd grok-build-vscode
@@ -61,19 +73,12 @@ Then reload VS Code (**Ctrl+Shift+P → Developer: Reload Window**) and click th
 >
 > ![Right-click the Grok icon → Move To → Secondary Side Bar](docs/screenshots/side.png)
 
-**Manual install from VSIX:**
-
-```bash
-npm run package          # produces grok-vscode-1.0.0.vsix
-code --install-extension grok-vscode-1.0.0.vsix
-```
-
 **Uninstall:**
 
 ```bash
 ./scripts/uninstall.sh
 # or
-code --uninstall-extension phuryn.grok-vscode
+code --uninstall-extension PawelHuryn.grok-vscode-phuryn
 ```
 
 </details>
@@ -286,7 +291,7 @@ Use the gear → *Open global config* shortcut to reach the file, then restart t
 
 ![Move Grok to the secondary side bar](docs/screenshots/side.png)
 
-![Gear popover — Model and Effort settings with XHigh tooltip](docs/screenshots/model_effort.png)
+![Thinking, collapsing responses, formatting markdown](docs/screenshots/interactions.png)
 
 ![YOLO mode active with slash command autocomplete](docs/screenshots/yolo.png)
 
@@ -361,7 +366,7 @@ These are VS Code commands, not Grok slash commands. Open them with **Ctrl+Shift
 npm test
 ```
 
-60 tests covering ACP line parsing, session-update routing, prompt-meta extraction, response builders, file-chip CRUD, prompt building, slash-command filter, CLI locator, and terminal manager. All pure logic — no VS Code process required.
+61 tests covering ACP line parsing, session-update routing, prompt-meta extraction, response builders, file-chip CRUD, prompt building, slash-command filter, CLI locator, and terminal manager. All pure logic — no VS Code process required.
 
 </details>
 
