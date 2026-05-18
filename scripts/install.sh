@@ -25,14 +25,11 @@ find_code_cli() {
 
 vsix="${1-}"
 if [ -z "$vsix" ]; then
-    vsix=$(ls "$repo_root"/*.vsix 2>/dev/null | head -n1 || true)
-    if [ -z "$vsix" ]; then
-        echo "No .vsix found — building one..."
-        cd "$repo_root"
-        [ -d node_modules ] || npm install
-        npm run package
-        vsix=$(ls "$repo_root"/*.vsix | head -n1)
-    fi
+    # Always rebuild so the installed extension is never stale
+    cd "$repo_root"
+    [ -d node_modules ] || npm install
+    npm run package
+    vsix=$(ls "$repo_root"/*.vsix | head -n1)
 fi
 [ -f "$vsix" ] || { echo "vsix not found: $vsix" >&2; exit 1; }
 

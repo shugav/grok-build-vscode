@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { AcpClient, ExitPlanRequest, PermissionRequest } from "./acp";
+import { AcpClient, EffortLevel, ExitPlanRequest, PermissionRequest } from "./acp";
 import { locateGrokCli } from "./cli-locator";
 import { TerminalManager } from "./terminal-manager";
 import {
@@ -46,6 +46,10 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
   private terminalManager = new TerminalManager();
   private autoApprove = false;
   private cliPath?: string;
+  private sessionGen = 0;
+  private hasHistory = false;
+  private suppressContent = false;
+  private lastPlanText = "";
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -141,15 +145,20 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
   }
 
   private async startSession(): Promise<AcpClient | undefined> {
+    const gen = ++this.sessionGen;
     this.client?.dispose();
     this.client = undefined;
     this.autoApprove = false;
+    this.hasHistory = false;
+    this.suppressContent = false;
+    this.lastPlanText = "";
     this.post({ type: "modeChanged", modeId: "agent" });
 
     const cfg = vscode.workspace.getConfiguration("grok");
     const cliPath = locateGrokCli(cfg.get<string>("cliPath", ""));
     this.cliPath = cliPath || undefined;
     if (!cliPath) {
+      if (gen !== this.sessionGen) return undefined;
       this.post({
         type: "error",
         text: "Grok CLI not found. Install with: curl -fsSL https://x.ai/cli/install.sh | bash",
@@ -160,10 +169,13 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
 
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
     const env = this.buildEnv(cwd);
+    const effortStr = cfg.get<string>("defaultEffort", "");
+    const effort = effortStr ? (effortStr as EffortLevel) : undefined;
     const client = new AcpClient({
       cliPath,
       cwd,
       env,
+      effort,
       log: (msg) => this.output.appendLine(msg),
     });
     this.client = client;
@@ -192,6 +204,7 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
     client.terminal = this.terminalManager;
 
     client.on("initialized", (init) => {
+      if (gen !== this.sessionGen) return;
       this.post({
         type: "initialized",
         info: {
@@ -202,41 +215,63 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
         },
       });
     });
-    client.on("session", (res) =>
+    client.on("session", (res) => {
+      if (gen !== this.sessionGen) return;
       this.post({
         type: "session",
         sessionId: res.sessionId,
         models: client.availableModels,
         currentModelId: client.currentModelId,
-      }),
-    );
-    client.on("modelChanged", (id) =>
-      this.post({ type: "modelChanged", modelId: id }),
-    );
-    client.on("modeChanged", (id) =>
-      this.post({ type: "modeChanged", modeId: id }),
-    );
-    client.on("commandsUpdate", (cmds) =>
-      this.post({ type: "commandsUpdate", commands: cmds }),
-    );
-    client.on("messageChunk", (text: string) =>
-      this.post({ type: "messageChunk", text }),
-    );
-    client.on("thoughtChunk", (text: string) =>
-      this.post({ type: "thoughtChunk", text }),
-    );
-    client.on("toolCall", (u) => this.post({ type: "toolCall", call: u }));
-    client.on("toolCallUpdate", (u) =>
-      this.post({ type: "toolCallUpdate", call: u }),
-    );
-    client.on("plan", (u) => this.post({ type: "plan", plan: u }));
-    client.on("promptComplete", (meta) =>
-      this.post({ type: "promptComplete", meta }),
-    );
-    client.on("xaiNotification", (u) =>
-      this.post({ type: "xaiNotification", update: u }),
-    );
+      });
+    });
+    client.on("modelChanged", (id) => {
+      if (gen !== this.sessionGen) return;
+      this.post({ type: "modelChanged", modelId: id });
+    });
+    client.on("modeChanged", (id) => {
+      if (gen !== this.sessionGen) return;
+      this.post({ type: "modeChanged", modeId: id });
+    });
+    client.on("commandsUpdate", (cmds) => {
+      if (gen !== this.sessionGen) return;
+      this.post({ type: "commandsUpdate", commands: cmds });
+    });
+    client.on("messageChunk", (text: string) => {
+      if (gen !== this.sessionGen) return;
+      this.post({ type: "messageChunk", text });
+    });
+    client.on("thoughtChunk", (text: string) => {
+      if (gen !== this.sessionGen) return;
+      this.post({ type: "thoughtChunk", text });
+    });
+    client.on("toolCall", (u) => {
+      if (gen !== this.sessionGen) return;
+      this.post({ type: "toolCall", call: u });
+    });
+    client.on("toolCallUpdate", (u) => {
+      if (gen !== this.sessionGen) return;
+      this.post({ type: "toolCallUpdate", call: u });
+    });
+    client.on("plan", (u) => {
+      if (gen !== this.sessionGen) return;
+      // Stash plan text — x.ai/exit_plan_mode params are typically empty
+      this.lastPlanText =
+        (typeof u?.plan === "string" ? u.plan : "") ||
+        (typeof u?.planText === "string" ? u.planText : "") ||
+        (typeof u?.content === "string" ? u.content : "") ||
+        (typeof u?.content?.text === "string" ? u.content.text : "");
+      this.output.appendLine(`[plan] event payload keys: ${Object.keys(u ?? {}).join(", ")}`);
+    });
+    client.on("promptComplete", (meta) => {
+      if (gen !== this.sessionGen) return;
+      this.post({ type: "promptComplete", meta });
+    });
+    client.on("xaiNotification", (u) => {
+      if (gen !== this.sessionGen) return;
+      this.post({ type: "xaiNotification", update: u });
+    });
     client.on("permissionRequest", (req: PermissionRequest) => {
+      if (gen !== this.sessionGen) return;
       if (this.autoApprove) {
         const opt = req.options.find((o) => o.kind === "allow_always") ??
                     req.options.find((o) => o.kind === "allow_once");
@@ -244,17 +279,26 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
       }
       this.post({ type: "permissionRequest", req });
     });
-    client.on("exitPlanRequest", (req: ExitPlanRequest) =>
-      this.post({ type: "exitPlanRequest", req }),
-    );
-    client.on("exit", (code) => this.post({ type: "exit", code }));
+    client.on("exitPlanRequest", (req: ExitPlanRequest) => {
+      if (gen !== this.sessionGen) return;
+      const plan = req.plan || this.lastPlanText;
+      this.lastPlanText = "";
+      this.post({ type: "exitPlanRequest", req: { ...req, plan } });
+    });
+    client.on("exit", (code) => {
+      if (gen !== this.sessionGen) return; // suppress exit events from disposed/replaced clients
+      this.post({ type: "exit", code });
+    });
     client.on("stderr", (text: string) => this.output.append(text));
 
     try {
       await client.start();
+      if (gen !== this.sessionGen) { client.dispose(); return undefined; }
       const defaultModel = cfg.get<string>("defaultModel", "");
       await client.newSession(defaultModel || undefined);
+      if (gen !== this.sessionGen) { client.dispose(); this.client = undefined; return undefined; }
     } catch (err) {
+      if (gen !== this.sessionGen) { client.dispose(); return undefined; }
       const msg = (err as any).message ?? String(err);
       this.post({ type: "error", text: `Failed to start Grok: ${msg}` });
       client.dispose();
@@ -323,9 +367,56 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
         }
         break;
       case "setEffort": {
+        const newLevel = msg.level;
         const cfg2 = vscode.workspace.getConfiguration("grok");
-        await cfg2.update("defaultEffort", msg.level, vscode.ConfigurationTarget.Global);
-        await this.startSession();
+
+        if (!this.hasHistory || !this.client) {
+          await cfg2.update("defaultEffort", newLevel, vscode.ConfigurationTarget.Global);
+          await this.startSession();
+          break;
+        }
+
+        const choice = await vscode.window.showInformationMessage(
+          "Changing reasoning effort requires restarting the session.",
+          "Summarize & Restart",
+          "Just Restart",
+        );
+        if (!choice) break; // dismissed
+
+        await cfg2.update("defaultEffort", newLevel, vscode.ConfigurationTarget.Global);
+
+        if (choice === "Just Restart") {
+          this.post({ type: "clearMessages" });
+          await this.startSession();
+          break;
+        }
+
+        // "Summarize & Restart": silently capture summary, inject as context in new session
+        const currentClient = this.client;
+        this.post({ type: "summarizing" });
+        const chunks: string[] = [];
+        const captureChunk = (t: string) => chunks.push(t);
+        currentClient.on("messageChunk", captureChunk);
+        this.suppressContent = true;
+        try {
+          await currentClient.prompt(
+            "Summarize our conversation so far in a concise paragraph. Be brief.",
+          );
+        } catch { /* best effort */ }
+        currentClient.off("messageChunk", captureChunk);
+        this.suppressContent = false;
+        const summary = chunks.join("").trim();
+
+        await this.startSession(); // resets suppressContent to false
+
+        if (summary && this.client) {
+          this.post({ type: "sessionContext" });
+          this.suppressContent = true;
+          try {
+            await this.client.prompt(`[Context from previous session]\n${summary}`);
+          } catch { /* best effort */ }
+          this.suppressContent = false;
+        }
         break;
       }
       case "openGlobalConfig": {
@@ -407,6 +498,7 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
     this.chips = [];
     this.postChips();
 
+    this.hasHistory = true;
     const sentChips = chips.filter((c) => !c.hidden);
     this.post({ type: "userMessage", text, chips: sentChips });
     this.post({ type: "agentStart" });
@@ -440,7 +532,13 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
     this.post({ type: "chips", chips: this.chips });
   }
 
+  private static readonly SUPPRESS_TYPES = new Set([
+    "messageChunk", "thoughtChunk", "toolCall", "toolCallUpdate",
+    "promptComplete", "xaiNotification", "userMessage", "agentStart", "agentEnd",
+  ]);
+
   private post(message: any): void {
+    if (this.suppressContent && GrokSidebar.SUPPRESS_TYPES.has(message.type)) return;
     this.view?.webview.postMessage(message);
   }
 
@@ -550,7 +648,7 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
     <div class="welcome">
       <img src="${resourceUri("grok-mark-light.svg")}" alt="Grok" class="welcome-mark" />
       <h2>Grok Build</h2>
-      <p class="welcome-byline muted">by Pawel Huryn (<a href="https://www.productcompass.pm" class="muted-link">The Product Compass</a>)</p>
+      <p class="welcome-byline muted">by Paweł Huryn (<a href="https://www.productcompass.pm" class="muted-link">productcompass.pm</a>)</p>
       <p id="welcome-version" class="muted">starting...</p>
       <ul class="welcome-tips">
         <li>Type your prompt below. <kbd>Enter</kbd> to send.</li>
@@ -566,9 +664,9 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
       <div class="toolbar-left">
         <button id="gear-btn" class="toolbar-btn" title="Settings"></button>
         <div class="context-donut" id="donut" title="Context usage">
-          <svg width="22" height="22" viewBox="0 0 22 22">
-            <circle cx="11" cy="11" r="9" fill="none" stroke="var(--vscode-editorWidget-border,#444)" stroke-width="2"/>
-            <circle id="donut-arc" cx="11" cy="11" r="9" fill="none" stroke="var(--vscode-charts-green,#4ec9b0)" stroke-width="2" stroke-dasharray="0 999" transform="rotate(-90 11 11)"/>
+          <svg width="16" height="16" viewBox="0 0 16 16">
+            <circle cx="8" cy="8" r="5" fill="none" stroke="var(--vscode-editorWidget-border,#444)" stroke-width="3"/>
+            <circle id="donut-arc" cx="8" cy="8" r="5" fill="none" stroke="var(--vscode-charts-green,#4ec9b0)" stroke-width="3" stroke-dasharray="0 999" transform="rotate(-90 8 8)"/>
           </svg>
           <span id="donut-label" class="small muted">0%</span>
         </div>

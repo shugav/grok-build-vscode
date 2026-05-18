@@ -21,13 +21,15 @@ grok /login
 
 `grok /login` opens a browser and completes OAuth in one step. That's the recommended path — no API key management needed.
 
-**Alternative — API key:** if you prefer a key over OAuth, set it before starting VS Code:
+**Alternative — API key:** if you prefer a key over OAuth, get one at [console.x.ai](https://console.x.ai), then set it before starting VS Code:
 
 ```bash
 export XAI_API_KEY=xai-...
 ```
 
 Or add it to `.env` in your workspace root — the extension loads it automatically and maps it to the key name the CLI expects.
+
+> **Note:** setting `XAI_API_KEY` takes precedence over your `grok /login` session. With a subscription (login only), the model picker shows **Grok Build**. With an API key you also get access to **grok-4.20** (3 variants), **grok-4.3**, and **grok-imagine** (3 options).
 
 ## Install
 
@@ -43,8 +45,8 @@ Then reload VS Code (**Ctrl+Shift+P → Developer: Reload Window**) and click th
 **Manual install from VSIX:**
 
 ```bash
-npm run package          # produces grok-vscode-0.9.0.vsix
-code --install-extension grok-vscode-0.9.0.vsix
+npm run package          # produces grok-vscode-1.0.0.vsix
+code --install-extension grok-vscode-1.0.0.vsix
 ```
 
 **Uninstall:**
@@ -75,16 +77,63 @@ Type in the composer and press **Enter** (or **Ctrl/Cmd+Enter** if you've enable
 
 ### Slash commands
 
-Type `/` to open autocomplete. Commands are sourced live from the CLI via `available_commands_update` — the list reflects exactly what the running CLI version supports. Common ones:
+Type `/` to open autocomplete. Commands are sourced live from the CLI via `available_commands_update` — the list reflects exactly what the running CLI version supports.
+
+**Session & context**
 
 | Command | Effect |
 |---|---|
-| `/compact` | Compress conversation context (keeps memory, frees tokens) |
+| `/compact` | Compress conversation history to free context |
+| `/context` | Show context window usage and session stats |
+| `/session-info` | Show current model, turns, and context usage |
+| `/flush` | Flush conversation memory to disk |
 | `/new` | Start a fresh session |
-| `/plan` | Enter plan mode |
-| `/yolo` | Enable auto-approval for the rest of the session |
-| `/memory` | Show or edit the agent's persistent memory |
-| `/context` | Show what's currently in the context window |
+
+**Modes & behaviour**
+
+| Command | Effect |
+|---|---|
+| `/plan` | Enter plan mode (draft plan before acting) |
+| `/yolo` | Enable auto-approval for the session |
+| `/always-approve` | Toggle always-approve (skip all permission prompts) |
+
+**Memory**
+
+| Command | Effect |
+|---|---|
+| `/memory` | Browse, view, and manage memories |
+| `/dream` | Memory consolidation (merge session logs into organised topics) |
+
+**Agents & coding**
+
+| Command | Effect |
+|---|---|
+| `/implement` | Full implement → review → fix loop with subagent reviewers |
+| `/review` | Review uncommitted changes, a branch, or a GitHub PR |
+| `/pr-babysit` | Monitor PRs, fix CI failures, address review comments |
+| `/check` | Verify changes with a subagent self-verification loop |
+| `/design` | Design-doc writer + reviewer loop until consensus |
+| `/best-of-n` | Run N parallel implementations and pick the best |
+| `/loop` | Run a prompt on a recurring interval |
+
+**Document & media skills**
+
+| Command | Effect |
+|---|---|
+| `/docx` | Create, read, or edit Word documents |
+| `/pptx` | Create or edit PowerPoint presentations |
+| `/xlsx` | Work with spreadsheets (.xlsx / .csv) |
+| `/imagine` | Generate an image from a text description |
+| `/imagine-video` | Generate a video from a text description |
+
+**System**
+
+| Command | Effect |
+|---|---|
+| `/help` | Grok docs (config, MCP, auth, skills) |
+| `/plugins` | List, reload, trust, add, or remove plugins |
+| `/create-skill` | Create a new Grok skill |
+| `/feedback` | Send feedback about the current session |
 
 ### Files in context (chips)
 
@@ -129,6 +178,11 @@ The mode button in the bottom toolbar (shield / list-tree / lightning icon) open
 
 Switching from YOLO back to Agent or Plan re-enables permission cards immediately.
 
+**How modes map to ACP internally:**
+- **Agent** → `session/set_mode: "agent"` sent to the CLI. The CLI asks for permission before each write or shell action.
+- **Plan** → `session/set_mode: "plan"` sent to the CLI. The CLI collects a full plan and sends it back via `x.ai/exit_plan_mode`; the extension shows an Approve / Abandon / Reject card.
+- **YOLO** → no ACP call; the extension simply auto-responds "allow always" to every incoming `session/request_permission` request. The session and CLI process are untouched.
+
 ### Reasoning Effort
 
 Click the **gear** icon → *Reasoning Effort* to choose how deeply the model thinks before responding:
@@ -142,11 +196,15 @@ Click the **gear** icon → *Reasoning Effort* to choose how deeply the model th
 | **XHigh** | Very deep |
 | **Max** | Maximum depth, slowest |
 
-Changing effort restarts the session (a new `grok agent stdio` process is spawned with the updated flag). The selected level is saved to `grok.defaultEffort` in VS Code settings and persists across reloads.
+Changing effort restarts the session (a new `grok agent stdio` process is spawned with the updated `--reasoning-effort` flag). The selected level is saved to `grok.defaultEffort` in VS Code settings and persists across reloads.
+
+If the current session has chat history, a dialog appears with two options:
+- **Summarize & Restart** — asks Grok to summarize the conversation, starts a fresh session, then automatically sends the summary as context so Grok can pick up where it left off.
+- **Just Restart** — discards the current session immediately and clears the chat.
 
 ### Models
 
-Click the **model button** (sparkle icon + model name) to pick from the models your subscription provides. The list comes from the CLI's `session/new` response — it reflects your account's available models. Switching model is live (`session/set_model`), no restart needed.
+Click the **model name button** in the gear popover to pick from the models your subscription provides. The list comes from the CLI's `session/new` response — it reflects your account's available models. Switching model is live (`session/set_model`), no restart needed.
 
 ### Context usage
 
@@ -184,6 +242,14 @@ Click the **gear** icon in the bottom toolbar to open the settings panel:
 MCP servers are configured in the CLI, not in the extension. Add them to `~/.grok/config.toml` (global) or `.grok/config.toml` (project). The extension does not interfere — it passes no `mcpServers` field to `session/new`, so the CLI picks up its own configuration automatically.
 
 Use the gear → *Open global config* shortcut to reach the file, then restart the session (**+**) for changes to take effect.
+
+## Screenshots
+
+![Welcome screen and mode picker](docs/screenshots/start.png)
+
+![Gear popover — Model and Effort settings with XHigh tooltip](docs/screenshots/model_effort.png)
+
+![YOLO mode active with slash command autocomplete](docs/screenshots/yolo.png)
 
 ## Configuration
 
@@ -225,17 +291,7 @@ The extension implements every mandatory server→client handler. Missing any of
 npm test
 ```
 
-58 tests covering ACP line parsing, session-update routing, prompt-meta extraction, response builders, file-chip CRUD, prompt building, slash-command filter, CLI locator, and terminal manager. All pure logic — no VS Code process required.
-
-## Publishing
-
-```bash
-# one-time setup
-npx @vscode/vsce login phuryn   # needs Azure DevOps PAT with Marketplace > Manage scope
-
-# per release: bump version in package.json, then:
-npm test && npm run publish
-```
+60 tests covering ACP line parsing, session-update routing, prompt-meta extraction, response builders, file-chip CRUD, prompt building, slash-command filter, CLI locator, and terminal manager. All pure logic — no VS Code process required.
 
 ## License
 

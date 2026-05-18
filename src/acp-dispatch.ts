@@ -97,7 +97,7 @@ export function makeExitPlanResponse(
   id: number | string,
   verdict: "approved" | "abandoned" | "rejected",
 ) {
-  return { jsonrpc: "2.0", id, result: { outcome: { type: verdict } } };
+  return { jsonrpc: "2.0", id, result: { outcome: verdict } };
 }
 
 export function makeAckResponse(id: number | string, result: any = {}) {

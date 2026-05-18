@@ -1,6 +1,7 @@
 .vscode/**
 .gitignore
 .env
+.claude/**
 src/**
 tsconfig.json
 node_modules/**

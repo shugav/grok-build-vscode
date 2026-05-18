@@ -1,9 +1,13 @@
 {
   "name": "grok-vscode",
-  "displayName": "Grok",
-  "description": "Run xAI's Grok Build CLI inside VS Code. Chat sidebar driven by `grok agent stdio` over ACP.",
-  "version": "0.9.0",
+  "displayName": "Grok Build",
+  "description": "[Community] Run xAI's Grok Build CLI inside VS Code — a chat sidebar driven by `grok agent stdio` over ACP. Community extension, not affiliated with or endorsed by xAI.",
+  "version": "1.0.0",
   "publisher": "phuryn",
+  "author": {
+    "name": "Paweł Huryn",
+    "url": "https://www.productcompass.pm"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -19,6 +23,13 @@
   "activationEvents": ["onStartupFinished"],
   "contributes": {
     "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "grokSidebar",
+          "title": "Grok",
+          "icon": "resources/grok-icon.svg"
+        }
+      ],
       "secondarySideBar": [
         {
           "id": "grokSidebar",

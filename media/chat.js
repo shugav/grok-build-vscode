@@ -16,6 +16,13 @@
   const gearPopover = $("gear-popover");
 
   const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
+  const EFFORT_TOOLTIPS = {
+    low: "Low — fast, lightweight reasoning",
+    medium: "Medium — balanced",
+    high: "High — deeper reasoning",
+    xhigh: "XHigh — very deep reasoning",
+    max: "Max — maximum depth, slowest",
+  };
 
   const state = {
     welcomeVisible: true,
@@ -52,19 +59,20 @@
     gear: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`,
     sparkle: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>`,
     shield: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>`,
+    bot: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>`,
     listTree: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12h-8"/><path d="M21 6H8"/><path d="M21 18h-8"/><path d="M3 6v4c0 1.1.9 2 2 2h3"/><path d="M3 10v6c0 1.1.9 2 2 2h3"/></svg>`,
     zap: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>`,
   };
 
   const MODE_META = {
     agent: {
-      icon: ICON.shield,
-      label: "Agent",
+      icon: ICON.bot,
+      label: "Agent mode",
       desc: "Grok will ask for approval before making each change",
     },
     plan: {
       icon: ICON.listTree,
-      label: "Plan",
+      label: "Plan mode",
       desc: "Grok will explore the task and present a plan before acting",
     },
     yolo: {
@@ -80,6 +88,10 @@
     if (!s) return "";
     if (s === "xhigh") return "XHigh";
     return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  function toK(n) {
+    return Math.round(n / 1000) + "K";
   }
 
   function truncate(s, max) {
@@ -108,27 +120,111 @@
   // ---------- markdown ----------
 
   function renderMarkdown(raw) {
-    const blocks = [];
+    const codeBlocks = [];
     let s = raw.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, _lang, code) => {
-      const i = blocks.length;
-      blocks.push(`<pre><code>${escapeHtml(code).trimEnd()}</code></pre>`);
+      const i = codeBlocks.length;
+      codeBlocks.push(`<pre><code>${escapeHtml(code).trimEnd()}</code></pre>`);
       return `\x00B${i}\x00`;
     });
-    s = s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    s = s.replace(/`([^`\n]+)`/g, "<code>$1</code>");
-    s = s.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
-    s = s.replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
-    s = s.replace(/^### (.+)$/mg, "<h3>$1</h3>");
-    s = s.replace(/^## (.+)$/mg, "<h2>$1</h2>");
-    s = s.replace(/^# (.+)$/mg, "<h1>$1</h1>");
-    s = s.replace(/((?:^[-*] .+\n?)+)/mg, (m) =>
-      "<ul>" + m.replace(/^[-*] (.+)$/mg, "<li>$1</li>") + "</ul>");
-    s = s.replace(/((?:^\d+\. .+\n?)+)/mg, (m) =>
-      "<ol>" + m.replace(/^\d+\. (.+)$/mg, "<li>$1</li>") + "</ol>");
-    s = s.replace(/\n\n+/g, "<br><br>");
-    s = s.replace(/\n/g, "<br>");
-    s = s.replace(/\x00B(\d+)\x00/g, (_, i) => blocks[+i]);
-    return s;
+
+    function inline(t) {
+      return t
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+        .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
+    }
+
+    // Expand inline numbered lists: "1. A 2. B 3. C" on one line → separate lines
+    function expandInline(line) {
+      if (!/^\s*\d+\. /.test(line)) return [line];
+      const indent = line.match(/^(\s*)/)[1];
+      const parts = line.trim().split(/(?<=\S)\s+(?=\d+\. )/);
+      if (parts.length <= 1) return [line];
+      const nums = parts.map(p => parseInt(p.match(/^(\d+)\./)?.[1] ?? '0'));
+      const sequential = nums.every((n, i) => n === i + 1);
+      return sequential ? parts.map(p => indent + p) : [line];
+    }
+
+    const rawLines = s.split('\n');
+    const lines = [];
+    for (const ln of rawLines) lines.push(...expandInline(ln));
+
+    let out = '';
+    // stack: { tag:'ul'|'ol', indent:number, liOpen:boolean }[]
+    let stack = [];
+    let pendingBreak = false;
+    let lastWasBlock = false;
+    let lastPara = false;
+
+    function closeLiAt(i) {
+      if (stack[i].liOpen) { out += '</li>'; stack[i].liOpen = false; }
+    }
+    function closeFrom(depth) {
+      for (let i = stack.length - 1; i >= depth; i--) {
+        closeLiAt(i);
+        out += `</${stack[i].tag}>`;
+      }
+      stack = stack.slice(0, depth);
+    }
+
+    for (const line of lines) {
+      if (!line.trim()) {
+        if (stack.length === 0 && !lastWasBlock) pendingBreak = true;
+        lastPara = false;
+        continue;
+      }
+      if (pendingBreak && stack.length === 0) { out += '<br><br>'; pendingBreak = false; lastPara = false; }
+      pendingBreak = false;
+      lastWasBlock = false;
+
+      const hm = line.match(/^(#{1,3}) (.+)$/);
+      if (hm) {
+        closeFrom(0);
+        out += `<h${hm[1].length}>${inline(hm[2])}</h${hm[1].length}>`;
+        lastWasBlock = true;
+        lastPara = false;
+        continue;
+      }
+
+      const lm = line.match(/^( *)([-*]|\d+\.) (.+)$/);
+      if (lm) {
+        const indent = lm[1].length;
+        const isOl = /\d/.test(lm[2][0]);
+        const tag = isOl ? 'ol' : 'ul';
+        const content = lm[3];
+
+        while (stack.length > 0 && stack[stack.length - 1].indent > indent) {
+          closeLiAt(stack.length - 1);
+          out += `</${stack[stack.length - 1].tag}>`;
+          stack.pop();
+        }
+
+        if (stack.length === 0 || stack[stack.length - 1].indent < indent) {
+          out += `<${tag}>`;
+          stack.push({ tag, indent, liOpen: false });
+        } else {
+          closeLiAt(stack.length - 1);
+          if (stack[stack.length - 1].tag !== tag) {
+            out += `</${stack[stack.length - 1].tag}><${tag}>`;
+            stack[stack.length - 1].tag = tag;
+          }
+        }
+
+        out += `<li>${inline(content)}`;
+        stack[stack.length - 1].liOpen = true;
+        lastPara = false;
+        continue;
+      }
+
+      closeFrom(0);
+      if (lastPara) out += '<br>';
+      out += inline(line);
+      lastPara = true;
+    }
+
+    closeFrom(0);
+    return out.replace(/\x00B(\d+)\x00/g, (_, i) => codeBlocks[+i]);
   }
 
   // ---------- popovers ----------
@@ -174,6 +270,12 @@
   function renderGearMain() {
     gearPopover.innerHTML = "";
 
+    // ── Model + effort header ─────────────────────────────────────────────
+    const modelEffortSection = document.createElement("div");
+    modelEffortSection.className = "popover-section popover-section-first";
+    modelEffortSection.textContent = "Model and Effort";
+    gearPopover.appendChild(modelEffortSection);
+
     // ── Model + effort row ────────────────────────────────────────────────
     const row = document.createElement("div");
     row.className = "model-effort-row";
@@ -181,7 +283,7 @@
     const nameBtn = document.createElement("button");
     nameBtn.className = "toolbar-btn model-name-btn";
     const modelName = state.currentModelId || "grok-build";
-    nameBtn.innerHTML = `${ICON.sparkle}<span class="btn-label">${escapeHtml(truncate(modelName, 16))}</span>`;
+    nameBtn.innerHTML = `<span class="btn-label">${escapeHtml(truncate(modelName, 16))}</span>`;
     nameBtn.title = `${modelName} — click to change`;
     nameBtn.onclick = (e) => { e.stopPropagation(); renderModelPicker(); };
     row.appendChild(nameBtn);
@@ -193,7 +295,7 @@
       const dot = document.createElement("span");
       dot.className = "effort-dot" + (i <= currentIdx ? " active" : "");
       dot.textContent = i <= currentIdx ? "●" : "○";
-      dot.title = capitalize(id);
+      dot.title = EFFORT_TOOLTIPS[id] || capitalize(id);
       dot.onclick = (e) => {
         e.stopPropagation();
         state.effort = state.effort === id ? "" : id;
@@ -461,6 +563,17 @@
     scrollToBottom();
   }
 
+  function addSessionContextBanner() {
+    clearWelcome();
+    const existing = document.getElementById("summarizing-indicator");
+    if (existing) existing.remove();
+    const el = document.createElement("div");
+    el.className = "session-context-banner";
+    el.textContent = "Context from previous session applied";
+    messagesEl.appendChild(el);
+    scrollToBottom();
+  }
+
   function addError(text) {
     clearWelcome();
     const el = document.createElement("div");
@@ -629,16 +742,17 @@
   // ---------- donut ----------
 
   function updateDonut(used) {
-    const pct = Math.min(100, Math.round((used / state.contextWindow) * 100));
-    const circumference = 2 * Math.PI * 9;
+    const max = state.contextWindow;
+    const pct = Math.min(100, Math.round((used / max) * 100));
+    const circumference = 2 * Math.PI * 5;
     const arc = (pct / 100) * circumference;
     donutArc.setAttribute("stroke-dasharray", `${arc} ${circumference}`);
     let color = "var(--vscode-charts-green, #4ec9b0)";
     if (pct > 90) color = "var(--vscode-charts-red, #f48771)";
     else if (pct > 70) color = "var(--vscode-charts-yellow, #d7ba7d)";
     donutArc.setAttribute("stroke", color);
-    donutLabel.textContent = `${pct}%`;
-    donutLabel.title = `${used.toLocaleString()} / ${state.contextWindow.toLocaleString()} tokens`;
+    donutLabel.textContent = `${toK(used)}/${toK(max)}`;
+    donutLabel.title = `${used.toLocaleString()} / ${max.toLocaleString()} tokens`;
   }
 
   // ---------- slash autocomplete ----------
@@ -656,9 +770,11 @@
 
   function renderSlash() {
     slashPopover.innerHTML = "";
+    let activeEl = null;
     state.slashFiltered.forEach((cmd, i) => {
       const el = document.createElement("div");
       el.className = `slash-item${i === state.slashActive ? " active" : ""}`;
+      if (i === state.slashActive) activeEl = el;
       const name = document.createElement("div");
       name.className = "slash-name";
       name.textContent = `/${cmd.name}`;
@@ -672,6 +788,7 @@
       el.onclick = () => pickSlash(cmd);
       slashPopover.appendChild(el);
     });
+    if (activeEl) activeEl.scrollIntoView({ block: "nearest" });
   }
 
   function pickSlash(cmd) {
@@ -805,6 +922,29 @@
         addError(`Grok exited (code ${msg.code}). Click the new session button to restart.`);
         state.busy = false;
         sendBtn.disabled = false;
+        break;
+      case "summarizing": {
+        clearWelcome();
+        const si = document.createElement("div");
+        si.id = "summarizing-indicator";
+        si.className = "session-context-banner";
+        si.textContent = "Summarizing…";
+        messagesEl.appendChild(si);
+        scrollToBottom();
+        break;
+      }
+      case "sessionContext":
+        addSessionContextBanner();
+        break;
+      case "clearMessages":
+        messagesEl.innerHTML = "";
+        state.welcomeVisible = false;
+        state.pendingDiffByToolCallId.clear();
+        state.activeAgentEl = null;
+        state.activeAgentRaw = "";
+        state.activeThoughtEl = null;
+        state.activeThoughtHdrEl = null;
+        state.activeToolGroupEl = null;
         break;
       case "error":
         addError(msg.text);

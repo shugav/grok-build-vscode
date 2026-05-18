@@ -94,6 +94,12 @@ describe("routeSessionUpdate", () => {
     if (r?.event === "commandsUpdate") expect(r.commands).toHaveLength(1);
   });
 
+  it("routes plan update", () => {
+    const r = routeSessionUpdate({ sessionUpdate: "plan", plan: "Step 1\nStep 2" });
+    expect(r?.event).toBe("plan");
+    if (r?.event === "plan") expect(r.payload.plan).toBe("Step 1\nStep 2");
+  });
+
   it("falls through to generic update for unknown tags", () => {
     const r = routeSessionUpdate({ sessionUpdate: "something_new", payload: 1 });
     expect(r?.event).toBe("update");
@@ -145,10 +151,16 @@ describe("response builders", () => {
     });
   });
 
-  it("makeExitPlanResponse uses outcome.type shape", () => {
-    expect(makeExitPlanResponse(9, "approved").result).toEqual({
-      outcome: { type: "approved" },
-    });
+  it("makeExitPlanResponse sends flat outcome string", () => {
+    expect(makeExitPlanResponse(9, "approved").result).toEqual({ outcome: "approved" });
+    expect(makeExitPlanResponse(9, "abandoned").result).toEqual({ outcome: "abandoned" });
+    expect(makeExitPlanResponse(9, "rejected").result).toEqual({ outcome: "rejected" });
+  });
+
+  it("makeExitPlanResponse wraps in jsonrpc 2.0 envelope", () => {
+    const r = makeExitPlanResponse(42, "approved");
+    expect(r.jsonrpc).toBe("2.0");
+    expect(r.id).toBe(42);
   });
 
   it("makeAckResponse defaults to empty result", () => {

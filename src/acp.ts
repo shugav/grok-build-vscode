@@ -236,12 +236,13 @@ export class AcpClient extends EventEmitter {
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
       this.proc?.stdin.write(JSON.stringify(makeRequest(id, method, params)) + "\n");
+      const timeoutMs = method === "session/prompt" ? 1_800_000 : 120_000;
       setTimeout(() => {
         if (this.pending.has(id)) {
           this.pending.delete(id);
           reject(new Error(`ACP request timed out: ${method}`));
         }
-      }, 120_000);
+      }, timeoutMs);
     });
   }
 
