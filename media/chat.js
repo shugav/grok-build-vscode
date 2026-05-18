@@ -6,31 +6,289 @@
   const input = $("input");
   const sendBtn = $("send-btn");
   const newBtn = $("new-btn");
-  const modelBtn = $("model-btn");
-  const effortBtn = $("effort-btn");
   const modeBtn = $("mode-btn");
+  const gearBtn = $("gear-btn");
   const chipsEl = $("chips");
-  const hint = $("hint");
   const donutArc = $("donut-arc");
   const donutLabel = $("donut-label");
   const slashPopover = $("slash-popover");
+  const modePopover = $("mode-popover");
+  const gearPopover = $("gear-popover");
+
+  const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
 
   const state = {
     welcomeVisible: true,
     currentModelId: null,
+    availableModels: [],
     currentModeId: "agent",
+    effort: "",
+    cwd: "",
     contextWindow: 200000,
-    effort: "high",
     useCtrlEnter: false,
     commands: [],
     chips: [],
     busy: false,
     activeAgentEl: null,
+    activeAgentRaw: "",
     activeThoughtEl: null,
+    activeThoughtHdrEl: null,
+    thoughtStartTime: null,
+    activeToolGroupEl: null,
     slashFiltered: [],
     slashActive: 0,
-    pendingDiffByToolCallId: new Map(), // toolCallId -> { path, oldText, newText }
+    pendingDiffByToolCallId: new Map(),
   };
+
+  // ---------- icons ----------
+
+  const ICON = {
+    eye: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`,
+    eyeOff: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>`,
+    file: `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>`,
+    cpu: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>`,
+    squarePen: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>`,
+    arrowUp: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>`,
+    gear: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`,
+    sparkle: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>`,
+    shield: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>`,
+    listTree: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12h-8"/><path d="M21 6H8"/><path d="M21 18h-8"/><path d="M3 6v4c0 1.1.9 2 2 2h3"/><path d="M3 10v6c0 1.1.9 2 2 2h3"/></svg>`,
+    zap: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>`,
+  };
+
+  const MODE_META = {
+    agent: {
+      icon: ICON.shield,
+      label: "Agent",
+      desc: "Grok will ask for approval before making each change",
+    },
+    plan: {
+      icon: ICON.listTree,
+      label: "Plan",
+      desc: "Grok will explore the task and present a plan before acting",
+    },
+    yolo: {
+      icon: ICON.zap,
+      label: "YOLO",
+      desc: "Grok will automatically approve all permission requests",
+    },
+  };
+
+  // ---------- helpers ----------
+
+  function capitalize(s) {
+    if (!s) return "";
+    if (s === "xhigh") return "XHigh";
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  function truncate(s, max) {
+    return s.length > max ? s.slice(0, max) + "…" : s;
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function updateModeBtn(modeId) {
+    const meta = MODE_META[modeId] || MODE_META.agent;
+    modeBtn.innerHTML = `${meta.icon}<span class="btn-label">${escapeHtml(meta.label)}</span>`;
+    modeBtn.classList.toggle("plan-active", modeId === "plan");
+    modeBtn.classList.toggle("yolo-active", modeId === "yolo");
+  }
+
+  newBtn.innerHTML = ICON.squarePen;
+  sendBtn.innerHTML = ICON.arrowUp;
+  gearBtn.innerHTML = ICON.gear;
+  updateModeBtn("agent");
+
+  // ---------- markdown ----------
+
+  function renderMarkdown(raw) {
+    const blocks = [];
+    let s = raw.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, _lang, code) => {
+      const i = blocks.length;
+      blocks.push(`<pre><code>${escapeHtml(code).trimEnd()}</code></pre>`);
+      return `\x00B${i}\x00`;
+    });
+    s = s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    s = s.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
+    s = s.replace(/^### (.+)$/mg, "<h3>$1</h3>");
+    s = s.replace(/^## (.+)$/mg, "<h2>$1</h2>");
+    s = s.replace(/^# (.+)$/mg, "<h1>$1</h1>");
+    s = s.replace(/((?:^[-*] .+\n?)+)/mg, (m) =>
+      "<ul>" + m.replace(/^[-*] (.+)$/mg, "<li>$1</li>") + "</ul>");
+    s = s.replace(/((?:^\d+\. .+\n?)+)/mg, (m) =>
+      "<ol>" + m.replace(/^\d+\. (.+)$/mg, "<li>$1</li>") + "</ol>");
+    s = s.replace(/\n\n+/g, "<br><br>");
+    s = s.replace(/\n/g, "<br>");
+    s = s.replace(/\x00B(\d+)\x00/g, (_, i) => blocks[+i]);
+    return s;
+  }
+
+  // ---------- popovers ----------
+
+  function closePopovers() {
+    modePopover.hidden = true;
+    gearPopover.hidden = true;
+  }
+
+  function positionPopover(popover, btn) {
+    const composerRect = popover.parentElement.getBoundingClientRect();
+    const btnRect = btn.getBoundingClientRect();
+    popover.style.top = "auto";
+    popover.style.bottom = (composerRect.bottom - btnRect.top + 4) + "px";
+    popover.style.left = (btnRect.left - composerRect.left) + "px";
+    popover.style.right = "auto";
+    requestAnimationFrame(() => {
+      const pw = popover.getBoundingClientRect().width;
+      const leftOffset = btnRect.left - composerRect.left;
+      if (leftOffset + pw > composerRect.width) {
+        popover.style.left = Math.max(0, composerRect.width - pw) + "px";
+      }
+    });
+  }
+
+  // ---------- gear popover ----------
+
+  function addSection(label) {
+    const el = document.createElement("div");
+    el.className = "popover-section";
+    el.textContent = label;
+    gearPopover.appendChild(el);
+  }
+
+  function addGearItem(labelHtml, onclick) {
+    const el = document.createElement("div");
+    el.className = "toolbar-popover-item";
+    el.innerHTML = labelHtml;
+    el.onclick = (e) => { e.stopPropagation(); onclick(); };
+    gearPopover.appendChild(el);
+  }
+
+  function renderGearMain() {
+    gearPopover.innerHTML = "";
+
+    // ── Model + effort row ────────────────────────────────────────────────
+    const row = document.createElement("div");
+    row.className = "model-effort-row";
+
+    const nameBtn = document.createElement("button");
+    nameBtn.className = "toolbar-btn model-name-btn";
+    const modelName = state.currentModelId || "grok-build";
+    nameBtn.innerHTML = `${ICON.sparkle}<span class="btn-label">${escapeHtml(truncate(modelName, 16))}</span>`;
+    nameBtn.title = `${modelName} — click to change`;
+    nameBtn.onclick = (e) => { e.stopPropagation(); renderModelPicker(); };
+    row.appendChild(nameBtn);
+
+    const dotsEl = document.createElement("span");
+    dotsEl.className = "effort-dots";
+    const currentIdx = EFFORT_LEVELS.indexOf(state.effort);
+    EFFORT_LEVELS.forEach((id, i) => {
+      const dot = document.createElement("span");
+      dot.className = "effort-dot" + (i <= currentIdx ? " active" : "");
+      dot.textContent = i <= currentIdx ? "●" : "○";
+      dot.title = capitalize(id);
+      dot.onclick = (e) => {
+        e.stopPropagation();
+        state.effort = state.effort === id ? "" : id;
+        vscode.postMessage({ type: "setEffort", level: state.effort });
+        renderGearMain();
+        gearPopover.hidden = false;
+      };
+      dotsEl.appendChild(dot);
+    });
+    row.appendChild(dotsEl);
+    gearPopover.appendChild(row);
+
+    // ── Session ───────────────────────────────────────────────────────────
+    addSection("Session");
+    addGearItem("<span>Compact conversation</span>", () => {
+      vscode.postMessage({ type: "send", text: "/compact", chips: [] });
+      closePopovers();
+    });
+
+    // ── Config ────────────────────────────────────────────────────────────
+    addSection("Config");
+    addGearItem('<span>Open global config</span><span class="popover-external">↗</span>', () => {
+      vscode.postMessage({ type: "openGlobalConfig" });
+      closePopovers();
+    });
+    addGearItem('<span>Open project config</span><span class="popover-external">↗</span>', () => {
+      vscode.postMessage({ type: "openProjectConfig" });
+      closePopovers();
+    });
+    addGearItem('<span>MCP servers</span><span class="popover-external">↗</span>', () => {
+      vscode.postMessage({ type: "runMcpList" });
+      closePopovers();
+    });
+
+    // ── Debug ─────────────────────────────────────────────────────────────
+    addSection("Debug");
+    addGearItem("<span>Show extension logs</span>", () => {
+      vscode.postMessage({ type: "showLogs" });
+      closePopovers();
+    });
+  }
+
+  function renderModelPicker() {
+    gearPopover.innerHTML = "";
+    addGearItem('<span class="popover-back">← Model</span>', renderGearMain);
+    const models = state.availableModels.length
+      ? state.availableModels
+      : [{ modelId: state.currentModelId || "grok-build", name: state.currentModelId || "grok-build" }];
+    for (const m of models) {
+      const el = document.createElement("div");
+      const active = m.modelId === state.currentModelId;
+      el.className = "toolbar-popover-item" + (active ? " active" : "");
+      el.innerHTML = `<span>${escapeHtml(truncate(m.name || m.modelId, 28))}</span>${active ? '<span class="popover-check">✓</span>' : ""}`;
+      el.title = m.modelId;
+      el.onclick = (e) => {
+        e.stopPropagation();
+        vscode.postMessage({ type: "setModel", modelId: m.modelId });
+        closePopovers();
+      };
+      gearPopover.appendChild(el);
+    }
+  }
+
+  function openGearPopover() {
+    if (!gearPopover.hidden) { closePopovers(); return; }
+    closePopovers();
+    renderGearMain();
+    positionPopover(gearPopover, gearBtn);
+    gearPopover.hidden = false;
+  }
+
+  function openModePopover() {
+    if (!modePopover.hidden) { closePopovers(); return; }
+    modePopover.innerHTML = "";
+    for (const [id, meta] of Object.entries(MODE_META)) {
+      const el = document.createElement("div");
+      const active = id === state.currentModeId;
+      el.className = "toolbar-popover-item mode-popover-item" + (active ? " active" : "");
+      el.innerHTML =
+        `<span class="mode-item-icon">${meta.icon}</span>` +
+        `<span class="mode-item-body">` +
+          `<span class="mode-item-label">${escapeHtml(meta.label)}</span>` +
+          `<span class="mode-item-desc">${escapeHtml(meta.desc)}</span>` +
+        `</span>` +
+        (active ? '<span class="popover-check">✓</span>' : "");
+      el.onclick = (e) => {
+        e.stopPropagation();
+        vscode.postMessage({ type: "setMode", modeId: id });
+        closePopovers();
+      };
+      modePopover.appendChild(el);
+    }
+    positionPopover(modePopover, modeBtn);
+    modePopover.hidden = false;
+  }
 
   // ---------- messages ----------
 
@@ -40,7 +298,28 @@
     state.welcomeVisible = false;
   }
 
-  function addMessage(role, text) {
+  function makeCollapsible(el) {
+    el.classList.add("collapsible");
+    const expandBtn = document.createElement("button");
+    expandBtn.className = "msg-expand-btn";
+    expandBtn.textContent = "Show more";
+    el.appendChild(expandBtn);
+    expandBtn.onclick = () => {
+      el.classList.remove("collapsible");
+      expandBtn.style.display = "none";
+      const collapseBtn = document.createElement("button");
+      collapseBtn.className = "msg-collapse-btn";
+      collapseBtn.textContent = "Show less";
+      el.appendChild(collapseBtn);
+      collapseBtn.onclick = () => {
+        el.classList.add("collapsible");
+        expandBtn.style.display = "";
+        collapseBtn.remove();
+      };
+    };
+  }
+
+  function addMessage(role, text, chips) {
     clearWelcome();
     const el = document.createElement("div");
     el.className = `msg ${role}`;
@@ -50,22 +329,135 @@
     el.appendChild(rolelabel);
     const body = document.createElement("div");
     body.className = "body";
-    body.textContent = text;
+    if (text) body.innerHTML = renderMarkdown(text);
     el.appendChild(body);
+
+    if (role === "user" && chips && chips.length > 0) {
+      const chipsRow = document.createElement("div");
+      chipsRow.className = "msg-chips";
+      for (const chip of chips) {
+        const tag = document.createElement("span");
+        tag.className = "msg-chip";
+        const fileName = chip.relPath.split("/").pop() || chip.relPath;
+        tag.innerHTML = ICON.file + `<span>${escapeHtml(truncate(fileName, 20))}</span>`;
+        tag.title = chip.relPath;
+        chipsRow.appendChild(tag);
+      }
+      el.appendChild(chipsRow);
+    }
+
     messagesEl.appendChild(el);
     scrollToBottom();
+    if (role === "user" && text) {
+      requestAnimationFrame(() => {
+        if (body.scrollHeight > 56) makeCollapsible(el);
+      });
+    }
     return body;
   }
 
-  function addToolCard(call) {
+  const TOOL_VERB = {
+    read_file: "Read", file_read: "Read",
+    write_file: "Write", file_write: "Write", write: "Write",
+    bash: "Run", execute: "Run", run_command: "Run", run_terminal_command: "Run",
+    shell: "Run", run_bash: "Run",
+    list_dir: "List", list_directory: "List",
+    search_files: "Search", grep: "Search", ripgrep: "Search",
+    search_replace: "Edit", edit_file: "Edit", str_replace: "Edit",
+  };
+
+  function toolLabel(call) {
+    const name = call.tool || call.name || call.title || "";
+    const verb = TOOL_VERB[name] ||
+      (call.kind === "read" ? "Read" : call.kind === "edit" ? "Edit" :
+       call.kind === "execute" ? "Run" : null);
+    const r = call.rawInput || call.input || {};
+
+    const filePath = r.target_file || r.filePath || r.file_path || r.path ||
+      (Array.isArray(r.paths) ? r.paths[0] : "");
+    const command = r.command || r.cmd;
+
+    let target = "";
+    if (filePath) {
+      const base = filePath.split("/").pop() || filePath;
+      const isRead = name === "read_file" || name === "file_read";
+      if (isRead && r.offset != null && r.limit != null) {
+        const end = Number(r.offset) + Number(r.limit) - 1;
+        target = `${base} lines ${r.offset}-${end}`;
+      } else {
+        target = base;
+      }
+    } else if (command) {
+      target = command.length > 40 ? command.slice(0, 40) + "…" : command;
+    } else {
+      const fallback = Object.values(r).find(
+        (v) => typeof v === "string" && v.length > 0 && v.length < 120
+      ) || "";
+      target = fallback ? fallback.split("/").pop() || fallback : "";
+    }
+
+    if (verb && target) return `${verb} ${target}`;
+    if (verb) return verb;
+    return name || "tool";
+  }
+
+  function closeToolGroup() {
+    if (!state.activeToolGroupEl) return;
+    const el = state.activeToolGroupEl;
+    const calls = el._calls || [];
+
+    if (calls.length === 1) {
+      const flat = document.createElement("div");
+      flat.className = "tool-flat";
+      flat.textContent = toolLabel(calls[0]);
+      el.replaceWith(flat);
+    } else {
+      const labels = calls.map(toolLabel);
+      const summary = labels.length <= 2
+        ? labels.join(", ")
+        : `${labels[0]}, ${labels[1]} +${labels.length - 2}`;
+      const hdr = el.querySelector(".tool-group-header");
+      hdr.querySelector(".tool-group-label").textContent = summary;
+    }
+    state.activeToolGroupEl = null;
+  }
+
+  function addToToolGroup(call) {
     clearWelcome();
-    const el = document.createElement("div");
-    el.className = "msg tool";
-    const title = document.createElement("div");
-    title.className = "tool-title";
-    title.textContent = `[${call.kind || "tool"}] ${call.title || call.tool || "tool_call"}`;
-    el.appendChild(title);
-    messagesEl.appendChild(el);
+    if (!state.activeToolGroupEl) {
+      const el = document.createElement("div");
+      el.className = "tool-group";
+      el._calls = [];
+      const hdr = document.createElement("div");
+      hdr.className = "tool-group-header";
+      const body = document.createElement("div");
+      body.className = "tool-group-body";
+      body.hidden = true;
+      el.appendChild(hdr);
+      el.appendChild(body);
+      messagesEl.appendChild(el);
+      state.activeToolGroupEl = el;
+    }
+
+    const el = state.activeToolGroupEl;
+    el._calls.push(call);
+    const hdr = el.querySelector(".tool-group-header");
+    const body = el.querySelector(".tool-group-body");
+
+    const item = document.createElement("div");
+    item.className = "tool-item";
+    item.textContent = toolLabel(call);
+    body.appendChild(item);
+
+    const count = el._calls.length;
+    const first = toolLabel(el._calls[0]);
+    const extra = count > 1 ? ` +${count - 1}` : "";
+    hdr.innerHTML = `<span class="tool-chevron">▶</span><span class="tool-group-label">${escapeHtml(first + extra)}</span>`;
+    hdr.onclick = () => {
+      const expanded = !body.hidden;
+      body.hidden = expanded;
+      hdr.querySelector(".tool-chevron").textContent = expanded ? "▶" : "▼";
+    };
     scrollToBottom();
   }
 
@@ -81,21 +473,39 @@
   function appendThought(text) {
     clearWelcome();
     if (!state.activeThoughtEl) {
+      if (!state.thoughtStartTime) state.thoughtStartTime = Date.now();
       const el = document.createElement("div");
       el.className = "msg thinking";
+      const hdr = document.createElement("div");
+      hdr.className = "thinking-header";
+      hdr.innerHTML = `<span class="thinking-chevron">▶</span><span class="thinking-label">Thinking...</span>`;
+      const body = document.createElement("div");
+      body.className = "thinking-body";
+      body.hidden = true;
+      hdr.onclick = () => {
+        const open = body.hidden;
+        body.hidden = !open;
+        hdr.querySelector(".thinking-chevron").textContent = open ? "▼" : "▶";
+      };
+      el.appendChild(hdr);
+      el.appendChild(body);
       messagesEl.appendChild(el);
-      state.activeThoughtEl = el;
+      state.activeThoughtEl = body;
+      state.activeThoughtHdrEl = hdr;
     }
     state.activeThoughtEl.textContent += text;
     scrollToBottom();
   }
 
   function appendAgent(text) {
+    closeToolGroup();
     clearWelcome();
     if (!state.activeAgentEl) {
       state.activeAgentEl = addMessage("agent", "");
+      state.activeAgentRaw = "";
     }
-    state.activeAgentEl.textContent += text;
+    state.activeAgentRaw += text;
+    state.activeAgentEl.innerHTML = renderMarkdown(state.activeAgentRaw);
     scrollToBottom();
   }
 
@@ -114,7 +524,6 @@
     title.textContent = req.toolCall?.title || `permission: ${req.toolCall?.kind || "tool"}`;
     el.appendChild(title);
 
-    // diff preview link if we have a cached diff for this tool call
     const diff = state.pendingDiffByToolCallId.get(req.toolCall?.toolCallId);
     if (diff) {
       const subtitle = document.createElement("div");
@@ -160,7 +569,6 @@
       actions.appendChild(btn);
     }
     el.appendChild(actions);
-
     messagesEl.appendChild(el);
     scrollToBottom();
   }
@@ -188,11 +596,7 @@
       b.textContent = label;
       if (cls) b.classList.add(cls);
       b.onclick = () => {
-        vscode.postMessage({
-          type: "exitPlanAnswer",
-          requestId: req.id,
-          verdict,
-        });
+        vscode.postMessage({ type: "exitPlanAnswer", requestId: req.id, verdict });
         el.classList.add("resolved");
         for (const x of actions.querySelectorAll("button")) x.disabled = true;
       };
@@ -202,7 +606,6 @@
     actions.appendChild(mk("Abandon", "danger", "abandoned"));
     actions.appendChild(mk("Reject", "", "rejected"));
     el.appendChild(actions);
-
     messagesEl.appendChild(el);
     scrollToBottom();
   }
@@ -213,31 +616,12 @@
     chipsEl.innerHTML = "";
     for (const chip of state.chips) {
       const el = document.createElement("div");
-      el.className = `chip${chip.hidden ? " hidden" : ""}`;
-      const eye = document.createElement("button");
-      eye.textContent = chip.hidden ? "🚫" : "👁";
-      eye.title = chip.hidden ? "show in context" : "hide from context";
-      eye.onclick = () => vscode.postMessage({ type: "toggleChip", id: chip.id });
-      el.appendChild(eye);
-
-      const name = document.createElement("span");
-      name.className = "chip-name";
-      const sel =
-        chip.selectionStart && chip.selectionEnd
-          ? `:L${chip.selectionStart}-${chip.selectionEnd}`
-          : "";
-      name.textContent = `📄 ${chip.relPath}${sel}`;
-      name.title = chip.path;
-      name.style.cursor = "pointer";
-      name.onclick = () => vscode.postMessage({ type: "openFile", path: chip.path });
-      el.appendChild(name);
-
-      const remove = document.createElement("button");
-      remove.textContent = "×";
-      remove.title = "remove";
-      remove.onclick = () => vscode.postMessage({ type: "removeChip", id: chip.id });
-      el.appendChild(remove);
-
+      el.className = "chip" + (chip.hidden ? " chip-hidden" : "");
+      el.title = chip.path;
+      const fileName = (chip.relPath.split("/").pop() || chip.relPath);
+      el.innerHTML = (chip.hidden ? ICON.eyeOff : ICON.file) +
+        `<span>${truncate(fileName, 10)}</span>`;
+      el.onclick = () => vscode.postMessage({ type: "toggleChip", id: chip.id });
       chipsEl.appendChild(el);
     }
   }
@@ -261,17 +645,10 @@
 
   function updateSlash() {
     const m = (input.value.slice(0, input.selectionStart || 0)).match(/(?:^|\n)\/(\S*)$/);
-    if (!m) {
-      slashPopover.hidden = true;
-      state.slashFiltered = [];
-      return;
-    }
+    if (!m) { slashPopover.hidden = true; state.slashFiltered = []; return; }
     const q = m[1].toLowerCase();
     state.slashFiltered = state.commands.filter((c) => c.name.toLowerCase().startsWith(q));
-    if (!state.slashFiltered.length) {
-      slashPopover.hidden = true;
-      return;
-    }
+    if (!state.slashFiltered.length) { slashPopover.hidden = true; return; }
     state.slashActive = 0;
     renderSlash();
     slashPopover.hidden = false;
@@ -298,8 +675,7 @@
   }
 
   function pickSlash(cmd) {
-    const text = input.value;
-    input.value = text.replace(/(?:^|\n)\/(\S*)$/, (full) =>
+    input.value = input.value.replace(/(?:^|\n)\/(\S*)$/, (full) =>
       full.startsWith("\n") ? `\n/${cmd.name} ` : `/${cmd.name} `,
     );
     slashPopover.hidden = true;
@@ -315,7 +691,11 @@
     sendBtn.disabled = true;
     state.busy = true;
     state.activeAgentEl = null;
+    state.activeAgentRaw = "";
     state.activeThoughtEl = null;
+    state.activeThoughtHdrEl = null;
+    state.thoughtStartTime = null;
+    state.activeToolGroupEl = null;
     vscode.postMessage({ type: "send", text, chips: state.chips });
     input.value = "";
     slashPopover.hidden = true;
@@ -327,33 +707,32 @@
     const msg = e.data;
     switch (msg.type) {
       case "initialState":
-        state.effort = msg.effort;
         state.useCtrlEnter = msg.useCtrlEnter;
-        effortBtn.textContent = `effort: ${state.effort}`;
+        state.effort = msg.effort || "";
+        state.cwd = msg.cwd || "";
         break;
-      case "initialized":
-        $("welcome-version").textContent = `connected · ${msg.info.cliPath} · effort: ${msg.info.effort}`;
+      case "initialized": {
+        const ver = msg.info.version ? ` · v${msg.info.version}` : "";
+        $("welcome-version").textContent = `connected${ver}`;
         break;
+      }
       case "session": {
         state.currentModelId = msg.currentModelId;
-        modelBtn.textContent = msg.currentModelId || "grok-build";
-        const m = (msg.models || []).find((x) => x.modelId === msg.currentModelId);
+        state.availableModels = msg.models || [];
+        const m = state.availableModels.find((x) => x.modelId === msg.currentModelId);
         if (m?.totalContextTokens) state.contextWindow = m.totalContextTokens;
         updateDonut(0);
         break;
       }
       case "modelChanged":
         state.currentModelId = msg.modelId;
-        modelBtn.textContent = msg.modelId;
         break;
       case "modeChanged":
         state.currentModeId = msg.modeId;
-        modeBtn.textContent = `mode: ${msg.modeId}`;
-        modeBtn.classList.toggle("plan-active", msg.modeId === "plan");
+        updateModeBtn(msg.modeId);
         break;
-      case "effortChanged":
-        state.effort = msg.effort;
-        effortBtn.textContent = `effort: ${state.effort}`;
+      case "openModePopover":
+        openModePopover();
         break;
       case "chips":
         state.chips = msg.chips;
@@ -363,10 +742,9 @@
         state.commands = msg.commands || [];
         break;
       case "userMessage":
-        addMessage("user", msg.text);
+        addMessage("user", msg.text, msg.chips || []);
         break;
       case "agentStart":
-        hint.textContent = "thinking...";
         break;
       case "thoughtChunk":
         appendThought(msg.text);
@@ -375,10 +753,9 @@
         appendAgent(msg.text);
         break;
       case "toolCall":
-        addToolCard(msg.call);
+        addToToolGroup(msg.call);
         break;
       case "toolCallUpdate": {
-        // capture diffs by tool call id so we can offer "open diff preview" on the permission card
         const c = msg.call?.content;
         if (Array.isArray(c)) {
           for (const item of c) {
@@ -400,18 +777,23 @@
         addPlanCard(msg.req);
         break;
       case "promptComplete":
+        if (state.thoughtStartTime && state.activeThoughtHdrEl) {
+          const secs = Math.round((Date.now() - state.thoughtStartTime) / 1000);
+          const label = state.activeThoughtHdrEl.querySelector(".thinking-label");
+          if (label) label.textContent = `Thought for ${secs}s`;
+          state.thoughtStartTime = null;
+        }
+        closeToolGroup();
         if (msg.meta?.totalTokens) updateDonut(msg.meta.totalTokens);
-        hint.textContent = msg.meta?.totalTokens
-          ? `${msg.meta.inputTokens || 0} in · ${msg.meta.outputTokens || 0} out`
-          : "";
         state.busy = false;
         sendBtn.disabled = false;
         state.activeAgentEl = null;
+        state.activeAgentRaw = "";
         state.activeThoughtEl = null;
+        state.activeThoughtHdrEl = null;
         break;
       case "agentError":
         addError(msg.text);
-        hint.textContent = "error";
         state.busy = false;
         sendBtn.disabled = false;
         break;
@@ -420,7 +802,7 @@
         sendBtn.disabled = false;
         break;
       case "exit":
-        addError(`Grok exited (code ${msg.code}). Press "+ new" to restart.`);
+        addError(`Grok exited (code ${msg.code}). Click the new session button to restart.`);
         state.busy = false;
         sendBtn.disabled = false;
         break;
@@ -428,7 +810,6 @@
         addError(msg.text);
         break;
       case "xaiNotification":
-        // currently rendered as-needed by the specific update kinds
         break;
     }
   });
@@ -442,9 +823,15 @@
     state.pendingDiffByToolCallId.clear();
     vscode.postMessage({ type: "newSession" });
   };
-  modelBtn.onclick = () => vscode.postMessage({ type: "pickModel" });
-  effortBtn.onclick = () => vscode.postMessage({ type: "pickEffort" });
-  modeBtn.onclick = () => vscode.postMessage({ type: "toggleMode" });
+  modeBtn.onclick = (e) => { e.stopPropagation(); openModePopover(); };
+  gearBtn.onclick = (e) => { e.stopPropagation(); openGearPopover(); };
+  modePopover.addEventListener("click", (e) => e.stopPropagation());
+  gearPopover.addEventListener("click", (e) => e.stopPropagation());
+  document.addEventListener("click", (e) => {
+    closePopovers();
+    const a = e.target.closest("a[href]");
+    if (a) { e.preventDefault(); vscode.postMessage({ type: "openUrl", url: a.href }); }
+  });
 
   input.addEventListener("input", updateSlash);
   input.addEventListener("keydown", (e) => {
@@ -452,39 +839,26 @@
       if (e.key === "ArrowDown") {
         e.preventDefault();
         state.slashActive = (state.slashActive + 1) % state.slashFiltered.length;
-        renderSlash();
-        return;
+        renderSlash(); return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        state.slashActive =
-          (state.slashActive - 1 + state.slashFiltered.length) % state.slashFiltered.length;
-        renderSlash();
-        return;
+        state.slashActive = (state.slashActive - 1 + state.slashFiltered.length) % state.slashFiltered.length;
+        renderSlash(); return;
       }
       if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
         e.preventDefault();
-        pickSlash(state.slashFiltered[state.slashActive]);
-        return;
+        pickSlash(state.slashFiltered[state.slashActive]); return;
       }
-      if (e.key === "Escape") {
-        slashPopover.hidden = true;
-        return;
-      }
+      if (e.key === "Escape") { slashPopover.hidden = true; return; }
     }
     const sendKey = state.useCtrlEnter
       ? e.key === "Enter" && (e.metaKey || e.ctrlKey)
       : e.key === "Enter" && !e.shiftKey;
-    if (sendKey) {
-      e.preventDefault();
-      send();
-    }
+    if (sendKey) { e.preventDefault(); send(); }
   });
 
-  document.addEventListener("dragenter", (e) => {
-    e.preventDefault();
-    document.body.classList.add("dragging");
-  });
+  document.addEventListener("dragenter", (e) => { e.preventDefault(); document.body.classList.add("dragging"); });
   document.addEventListener("dragover", (e) => e.preventDefault());
   document.addEventListener("dragleave", () => document.body.classList.remove("dragging"));
   document.addEventListener("drop", (e) => {

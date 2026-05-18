@@ -1,208 +1,241 @@
-# Grok for VS Code
+# Grok Build for VS Code
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Native VS Code sidebar for **xAI's Grok Build** CLI, driven by `grok agent stdio` over the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
 
-xAI's docs list Zed, Neovim, Emacs, and marimo as ACP-compatible. JetBrains is "coming soon". VS Code isn't on the list. This extension fills that gap.
+xAI's docs list Zed, Neovim, Emacs, and marimo as ACP-compatible. This extension fills the VS Code gap.
 
-![sidebar overview screenshot — placeholder](./docs/screenshots/01-sidebar.png)
-> *Screenshot placeholder — capture before publish.*
+## Platform support
 
-## Status: v0.1 (working, pre-publish)
+**macOS and Linux only.** The `grok` CLI does not have a Windows build. On Windows, use WSL2 with VS Code's Remote-WSL extension and install everything on the WSL side.
 
-Implemented and smoke-tested end-to-end against `grok` v0.1.211:
+## Prerequisites
 
-- ACP `initialize` → `session/new` → `session/set_model` → `session/prompt` lifecycle
-- Streaming `agent_message_chunk` (response) + `agent_thought_chunk` (reasoning)
-- **File handlers** for `fs/read_text_file` and `fs/write_text_file` — mandatory; without these the agent can't read or write
-- **Permission flow** — `session/request_permission` rendered as a chat card with the 3 standard options (`always-allow` / `allow-once` / `reject-once`), with optional VS Code diff editor preview for `kind: "edit"` calls
-- **Plan mode** — `session/set_mode` toggle, `current_mode_update` reflected in the top-bar pill, `x.ai/exit_plan_mode` rendered as an Approve / Abandon / Reject card
-- **Effort flag** — `--reasoning-effort` passed at agent spawn (`low | medium | high | xhigh | max`); changing effort prompts to restart the session
-- **Model picker** — live `session/set_model` against the 8 models the API returns
-- **Slash autocomplete** — sourced from `available_commands_update` (compact, context, plan, yolo, model, memory, hooks-*, skills, share, fork, rewind, new, ...)
-- **Context donut** — token usage sourced from prompt result `_meta.totalTokens` against the model's `_meta.totalContextTokens` (e.g. 500k for `grok-build`)
-- **File chips** — active editor file added automatically; `👁` toggles hidden; `×` removes
-- **Drag-and-drop** files from Explorer (Shift = embed inline content)
-- **Right-click menus** — Explorer + editor: "Grok: Send File / Selection"
-- **Keybindings** — `Ctrl+;` opens the sidebar, `Alt+G` inserts an @-mention for the active file
+Install the Grok CLI, then sign in:
 
-### Known limits (v0.1)
+```bash
+curl -fsSL https://x.ai/cli/install.sh | bash
+grok /login
+```
 
-- Subagent messages render inline as tool cards — no dedicated subagent inspector
-- No worktree UI (use `grok worktree` from a regular terminal)
-- Diff editor is preview-only; the actual file write happens via `fs/write_text_file` after the user approves the permission card
+`grok /login` opens a browser and completes OAuth in one step. That's the recommended path — no API key management needed.
+
+**Alternative — API key:** if you prefer a key over OAuth, set it before starting VS Code:
+
+```bash
+export XAI_API_KEY=xai-...
+```
+
+Or add it to `.env` in your workspace root — the extension loads it automatically and maps it to the key name the CLI expects.
 
 ## Install
 
-### Prerequisite: Grok Build CLI
-
-Grok Build runs on **macOS and Linux** natively. On **Windows**, install it inside [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) and use VS Code's [Remote-WSL](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-wsl) extension so the sidebar runs on the WSL side where `grok` is reachable. A native Win32 build is on xAI's roadmap with no announced date.
-
-```bash
-# macOS / Linux / WSL2 Ubuntu
-curl -fsSL https://x.ai/cli/install.sh | bash
-
-# Authenticate (either):
-grok login                              # browser flow
-# or
-export GROK_CODE_XAI_API_KEY="xai-..."  # from console.x.ai
-```
-
-**Windows setup (one-time):**
-
-```powershell
-wsl --install -d Ubuntu                 # installs Ubuntu (reboot may be required)
-# inside Ubuntu:
-curl -fsSL https://x.ai/cli/install.sh | bash
-grok login
-```
-
-Then open VS Code, install the **Remote - WSL** extension, and reopen the workspace via *Remote-WSL: Reopen Folder in WSL*. Install the .vsix inside the WSL VS Code server (paths below run identically).
-
-### Install the extension
-
-The repo ships [scripts/install.ps1](./scripts/install.ps1) (Windows) and [scripts/install.sh](./scripts/install.sh) (macOS / Linux / WSL). Both auto-detect the VS Code CLI, build a `.vsix` if one isn't already present, and install it.
-
-#### Windows
-
-```powershell
-git clone https://github.com/phuryn/grok-build-vscode.git
-cd grok-build-vscode
-npm install
-pwsh scripts\install.ps1
-```
-
-Reload VS Code (Ctrl+Shift+P → *Developer: Reload Window*) and click the **Grok** icon in the activity bar.
-
-**Note for Windows:** the extension UI loads on Windows, but a chat session needs the `grok` binary, which is macOS/Linux/WSL only today. For a working agent, install it again from a **Remote-WSL** VS Code window (see *WSL setup* above).
-
-#### macOS / Linux / WSL Ubuntu
-
 ```bash
 git clone https://github.com/phuryn/grok-build-vscode.git
 cd grok-build-vscode
 npm install
-./scripts/install.sh
+./scripts/install.sh   # macOS / Linux / WSL
 ```
 
-#### Manual install (any platform)
+Then reload VS Code (**Ctrl+Shift+P → Developer: Reload Window**) and click the Grok icon in the activity bar.
+
+**Manual install from VSIX:**
 
 ```bash
-npm install
-npm run package                          # → grok-vscode-0.1.0.vsix (~34 KB)
-code --install-extension grok-vscode-0.1.0.vsix
+npm run package          # produces grok-vscode-0.9.0.vsix
+code --install-extension grok-vscode-0.9.0.vsix
 ```
 
-### Uninstall
-
-```powershell
-# Windows
-pwsh scripts\uninstall.ps1
-```
+**Uninstall:**
 
 ```bash
-# macOS / Linux / WSL
 ./scripts/uninstall.sh
-```
-
-```bash
-# manual
+# or
 code --uninstall-extension phuryn.grok-vscode
 ```
 
-### Dev loop (F5 — best for hacking on the extension)
+## How a session starts
 
-```bash
-git clone https://github.com/phuryn/grok-build-vscode.git
-cd grok-build-vscode
-npm install
-code .                                   # open in VS Code
-# press F5 — opens an Extension Development Host with the extension live
-```
+When the panel opens (or you click **+** for a new session), the extension:
 
-Recompile with `npm run watch` in another terminal; the Dev Host picks up changes on reload.
+1. Locates the `grok` binary (`grok.cliPath` setting → `~/.grok/bin/grok` → PATH).
+2. Spawns `grok agent stdio` as a background child process — **this is the process you'll see in Activity Monitor / `ps`**. It never opens a terminal window.
+3. Sends `initialize` + `session/new` over stdin/stdout using the ACP JSON-RPC protocol.
+4. If `grok.defaultEffort` is set, passes `--reasoning-effort <level>` as a flag to the spawn command.
+5. Streams all subsequent activity (messages, tool calls, permission requests) back to the chat.
 
-![welcome screenshot — placeholder](./docs/screenshots/02-welcome.png)
-> *Screenshot placeholder — first-launch welcome with CLI path + effort.*
+All session state, tool execution, MCP servers, subagents, memory, and plan-mode bookkeeping live inside that CLI process. The extension is a thin UI shell over ACP.
 
 ## Usage
 
-1. Click the **Grok** icon in the activity bar.
-2. The active editor file is added as context automatically — click `👁` to hide it from this turn, `×` to remove it entirely.
-3. Type your prompt. `Enter` sends; `Shift+Enter` for a newline. Slash commands (`/compact`, `/plan`, `/yolo`, ...) autocomplete from the CLI's live command list.
-4. When Grok wants to edit a file, a **permission card** appears with three buttons; click `open diff preview →` to inspect the proposed change in the VS Code diff editor before approving.
+### Sending a prompt
 
-![permission card screenshot — placeholder](./docs/screenshots/03-permission.png)
-![plan-mode screenshot — placeholder](./docs/screenshots/04-plan.png)
-> *Screenshot placeholders — permission card with diff preview, plan-mode approval.*
+Type in the composer and press **Enter** (or **Ctrl/Cmd+Enter** if you've enabled that in settings). The agent streams its response in the chat. Thinking traces appear as collapsible "Thought for Xs" blocks.
 
-## Architecture
+### Slash commands
 
-```
-VS Code webview ──postMessage──► extension host ──JSON-RPC over stdio──► grok agent --reasoning-effort <level> stdio
-                                                  ◄── session/update notifications
-                                                  ◄── fs/read_text_file, fs/write_text_file (server → client)
-                                                  ◄── terminal/create, terminal/output, terminal/wait_for_exit, terminal/kill, terminal/release
-                                                  ◄── session/request_permission
-                                                  ◄── x.ai/exit_plan_mode
-```
+Type `/` to open autocomplete. Commands are sourced live from the CLI via `available_commands_update` — the list reflects exactly what the running CLI version supports. Common ones:
 
-All session state, tool execution, MCP servers, subagents, memory, and plan-mode bookkeeping live in the CLI. The extension is a UI client over ACP.
-
-### Module map
-
-| File | Role |
+| Command | Effect |
 |---|---|
-| `src/extension.ts` | Entry point — commands, keybindings, output channel |
-| `src/sidebar.ts` | Webview provider, message routing, fs handlers, VS Code integration |
-| `src/acp.ts` | ACP client — spawns CLI, manages session lifecycle, emits events |
-| `src/acp-dispatch.ts` | Pure protocol helpers — line parsing, update routing, response builders (all unit-tested) |
-| `src/cli-locator.ts` | Locate `grok` binary (configured path → `~/.grok/bin/grok` → PATH) |
-| `src/terminal-manager.ts` | Spawns headless `sh -c <cmd>` children for the agent's `terminal/*` ACP calls, respects `outputByteLimit` |
-| `src/chips.ts` | File-chip CRUD (pure functions, unit-tested) |
-| `src/prompt-builder.ts` | Build final prompt text from message + chips (unit-tested) |
-| `src/slash-filter.ts` | Slash autocomplete query/filter/pick (unit-tested) |
-| `media/chat.js`, `media/chat.css` | Webview UI |
+| `/compact` | Compress conversation context (keeps memory, frees tokens) |
+| `/new` | Start a fresh session |
+| `/plan` | Enter plan mode |
+| `/yolo` | Enable auto-approval for the rest of the session |
+| `/memory` | Show or edit the agent's persistent memory |
+| `/context` | Show what's currently in the context window |
+
+### Files in context (chips)
+
+The active editor file is added as a chip automatically. Chips are sent to the agent as `@/path/to/file` references in the prompt — the path is resolved by the CLI, not embedded inline. This means file content stays up to date without being pasted into chat history.
+
+- Click a chip to toggle it out of (or back into) the current prompt
+- Drag files from the Explorer to add them; hold **Shift** to embed the content inline
+- Right-click a file in the Explorer or editor title → **Grok: Send File**
+- Select text, right-click → **Grok: Send Selection**
+- **Alt+G** inserts an `@`-mention for the active file directly into the prompt
+
+### Tool calls
+
+When the agent reads files, runs shell commands, or edits code, each action appears in the chat:
+
+- **Single call** — flat row with a human-readable label: "Read sidebar.ts lines 1–120", "Edit package.json", "Run npm test"
+- **Multiple calls** — collapsed group header ("Read, Edit +2") that expands on click to show each call individually
+
+Tool calls don't affect the conversation visible to the model — they're handled by the CLI process.
+
+### Permission cards
+
+Before the agent writes a file or runs a command, it asks for permission. A card appears in the chat with options:
+
+| Option | Effect |
+|---|---|
+| **Allow always** | Adds a permanent allow rule for this tool + path combination |
+| **Allow once** | Permits this single call |
+| **Reject** | Blocks the call; the agent may try a different approach |
+
+For file edits, click **open diff →** to preview the exact change in the VS Code diff editor before deciding.
+
+### Mode
+
+The mode button in the bottom toolbar (shield / list-tree / lightning icon) opens a picker with three options:
+
+| Mode | Icon | Behaviour |
+|---|---|---|
+| **Agent** | 🛡 shield | Normal mode — the agent acts and asks for permission when needed |
+| **Plan** | ⋮ list-tree | The agent drafts a complete plan and waits for your Approve / Reject before doing anything |
+| **YOLO** | ⚡ lightning | Auto-approves every permission request; no cards shown. Handled entirely in the extension — the CLI process and its session are preserved, no restart |
+
+Switching from YOLO back to Agent or Plan re-enables permission cards immediately.
+
+### Reasoning Effort
+
+Click the **gear** icon → *Reasoning Effort* to choose how deeply the model thinks before responding:
+
+| Level | Behaviour |
+|---|---|
+| **CLI default** | No flag passed; the CLI decides |
+| **Low** | Fast, lightweight reasoning |
+| **Medium** | Balanced |
+| **High** | Deeper reasoning |
+| **XHigh** | Very deep |
+| **Max** | Maximum depth, slowest |
+
+Changing effort restarts the session (a new `grok agent stdio` process is spawned with the updated flag). The selected level is saved to `grok.defaultEffort` in VS Code settings and persists across reloads.
+
+### Models
+
+Click the **model button** (sparkle icon + model name) to pick from the models your subscription provides. The list comes from the CLI's `session/new` response — it reflects your account's available models. Switching model is live (`session/set_model`), no restart needed.
+
+### Context usage
+
+The donut in the bottom toolbar shows token usage as a percentage of the model's context window (e.g. 500k tokens for `grok-build`). It updates after each prompt response.
+
+When context fills up, type `/compact` to compress the conversation, or click **+** for a fresh session.
+
+### Session restart
+
+Click **+** (new session) to kill the current `grok agent stdio` process and spawn a fresh one. On restart:
+
+- Mode resets to Agent
+- Effort uses `grok.defaultEffort` (or CLI default if unset)
+- Model uses `grok.defaultModel` (or CLI default if unset)
+- Chat history is cleared; memory persisted by the CLI (in `~/.grok/`) is not affected
+
+### Settings (gear popover)
+
+Click the **gear** icon in the bottom toolbar to open the settings panel:
+
+**Session**
+- *Reasoning Effort* — opens the effort picker (see above)
+- *Compact conversation* — sends `/compact` to compress context without leaving the UI
+
+**Config**
+- *Open global config* — opens `~/.grok/config.toml` in the editor (created if missing). Add MCP servers, model defaults, and other CLI options here.
+- *Open project config* — opens `.grok/config.toml` in the workspace root (created if missing). Workspace-scoped MCP servers and settings go here.
+- *MCP servers* — runs `grok mcp list` in a VS Code terminal to show all configured MCP servers and their status.
+
+**Debug**
+- *Show extension logs* — reveals the "Grok" output channel, which logs every ACP message sent and received. Useful for diagnosing connection or permission issues.
+
+### MCP servers
+
+MCP servers are configured in the CLI, not in the extension. Add them to `~/.grok/config.toml` (global) or `.grok/config.toml` (project). The extension does not interfere — it passes no `mcpServers` field to `session/new`, so the CLI picks up its own configuration automatically.
+
+Use the gear → *Open global config* shortcut to reach the file, then restart the session (**+**) for changes to take effect.
 
 ## Configuration
 
 | Setting | Default | Notes |
 |---|---|---|
-| `grok.cliPath` | `""` (auto) | Path to `grok`. Empty = auto-discover. |
-| `grok.defaultModel` | `""` | Model ID to use on new sessions. Empty = CLI default. |
-| `grok.defaultEffort` | `"high"` | `low \| medium \| high \| xhigh \| max`. Restart needed to apply. |
-| `grok.defaultPermissionMode` | `"default"` | Reserved; not yet wired in v0.1. |
-| `grok.includeActiveFileByDefault` | `true` | Auto-add active editor as a chip. |
-| `grok.useCtrlEnterToSend` | `false` | `Enter` newline, `Ctrl/Cmd+Enter` sends. |
+| `grok.cliPath` | `""` | Path to the `grok` binary. Empty = auto-discover (`~/.grok/bin/grok` → PATH). |
+| `grok.defaultModel` | `""` | Model ID for new sessions. Empty = CLI default. |
+| `grok.defaultEffort` | `""` | Reasoning effort (`low` / `medium` / `high` / `xhigh` / `max`). Empty = CLI default. Changing this restarts the session. |
+| `grok.includeActiveFileByDefault` | `true` | Auto-add the active editor as a context chip. |
+| `grok.useCtrlEnterToSend` | `false` | When true, Enter inserts a newline and Ctrl/Cmd+Enter sends. |
 
-## Commands
+## Architecture
 
-`Grok: Open` · `Grok: New Session` · `Grok: Pick Model` · `Grok: Pick Effort` · `Grok: Toggle Plan / Agent Mode` · `Grok: Send File` · `Grok: Send Selection` · `Grok: Insert @-Mention` · `Grok: Show Logs`
+```
+VS Code webview ──postMessage──► extension host ──JSON-RPC over stdin/stdout──► grok agent stdio
+                                                  ◄── session/update (message chunks, thought chunks, tool calls, mode changes)
+                                                  ◄── fs/read_text_file, fs/write_text_file
+                                                  ◄── terminal/create, terminal/output, terminal/wait_for_exit, terminal/kill, terminal/release
+                                                  ◄── session/request_permission
+                                                  ◄── x.ai/exit_plan_mode
+```
+
+The extension implements every mandatory server→client handler. Missing any of them would crash the agent mid-session.
+
+## Commands (Command Palette)
+
+`Grok: Open` · `Grok: New Session` · `Grok: Pick Model` · `Grok: Toggle Plan / Agent Mode` · `Grok: Send File` · `Grok: Send Selection` · `Grok: Insert @-Mention` · `Grok: Show Logs`
+
+## Keybindings
+
+| Key | Action |
+|---|---|
+| `Ctrl+;` / `Cmd+;` | Open Grok sidebar |
+| `Alt+G` | Insert `@`-mention for the active file (when editor focused) |
 
 ## Tests
 
 ```bash
-npm test          # vitest run
-npm run test:watch
+npm test
 ```
 
-58 tests covering pure logic + a fast TerminalManager suite that spawns real `/bin/sh` children — ACP line parsing & dispatch, session-update routing, prompt-meta extraction, response builders, file-chip CRUD, prompt building (file refs vs. inline selections), slash-command query/filter/pick, CLI locator fallback chain, and terminal create/output/wait/kill semantics including `outputByteLimit` truncation. See [TESTS.md](./TESTS.md) for the full design and what's deferred.
+58 tests covering ACP line parsing, session-update routing, prompt-meta extraction, response builders, file-chip CRUD, prompt building, slash-command filter, CLI locator, and terminal manager. All pure logic — no VS Code process required.
 
-## Publishing to the VS Code Marketplace
+## Publishing
 
-1. Register a publisher at https://marketplace.visualstudio.com/manage (one-time).
-2. Generate a Personal Access Token in Azure DevOps with **Marketplace > Manage** scope.
-3. `npx @vscode/vsce login <publisher-name>` (paste the PAT once; cached locally).
-4. `npm run publish` — auto-bumps via the version in `package.json`, packages, uploads.
+```bash
+# one-time setup
+npx @vscode/vsce login phuryn   # needs Azure DevOps PAT with Marketplace > Manage scope
 
-First-publish prerequisites (already satisfied):
-
-- Public GitHub repo URL in `package.json` `repository.url`
-- 128×128 PNG icon (`resources/grok-icon.png`)
-- `README.md`, `CHANGELOG.md`, `LICENSE`
-- `displayName`, `description`, `categories`, `keywords` set
-- `engines.vscode` minimum version
-
-Smoke-test the .vsix in a clean VS Code (no other extensions) before publishing.
+# per release: bump version in package.json, then:
+npm test && npm run publish
+```
 
 ## License
 

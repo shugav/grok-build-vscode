@@ -2,7 +2,7 @@
   "name": "grok-vscode",
   "displayName": "Grok",
   "description": "Run xAI's Grok Build CLI inside VS Code. Chat sidebar driven by `grok agent stdio` over ACP.",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "publisher": "phuryn",
   "license": "MIT",
   "repository": {
@@ -19,7 +19,7 @@
   "activationEvents": ["onStartupFinished"],
   "contributes": {
     "viewsContainers": {
-      "activitybar": [
+      "secondarySideBar": [
         {
           "id": "grokSidebar",
           "title": "Grok",
@@ -52,10 +52,6 @@
       {
         "command": "grok.pickModel",
         "title": "Grok: Pick Model"
-      },
-      {
-        "command": "grok.pickEffort",
-        "title": "Grok: Pick Effort"
       },
       {
         "command": "grok.toggleMode",
@@ -126,12 +122,6 @@
           "default": "",
           "description": "Model ID to use on new sessions. Empty = CLI default."
         },
-        "grok.defaultEffort": {
-          "type": "string",
-          "enum": ["low", "medium", "high", "xhigh", "max"],
-          "default": "high",
-          "description": "Default effort level for new sessions."
-        },
         "grok.defaultPermissionMode": {
           "type": "string",
           "enum": ["default", "acceptEdits", "auto", "dontAsk", "bypassPermissions", "plan"],
@@ -142,6 +132,20 @@
           "type": "boolean",
           "default": true,
           "description": "Auto-add the active editor file as a context chip."
+        },
+        "grok.defaultEffort": {
+          "type": "string",
+          "enum": ["", "low", "medium", "high", "xhigh", "max"],
+          "enumDescriptions": [
+            "CLI default (no flag passed to grok agent stdio)",
+            "Low — faster, lighter reasoning",
+            "Medium",
+            "High",
+            "XHigh",
+            "Max — deepest reasoning, slowest"
+          ],
+          "default": "",
+          "description": "Reasoning effort passed as --reasoning-effort to grok agent stdio. Changing this restarts the session."
         },
         "grok.useCtrlEnterToSend": {
           "type": "boolean",

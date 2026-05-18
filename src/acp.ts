@@ -130,6 +130,10 @@ export class AcpClient extends EventEmitter {
     this.proc.on("exit", (code) => {
       this.opts.log(`grok exited with code ${code}`);
       this.emit("exit", code);
+      for (const [id, p] of this.pending) {
+        this.pending.delete(id);
+        p.reject(new Error(`Grok process exited (code ${code})`));
+      }
     });
     this.proc.on("error", (err) => {
       this.opts.log(`spawn error: ${err.message}`);

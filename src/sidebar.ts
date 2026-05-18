@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { AcpClient, EffortLevel, ExitPlanRequest, PermissionRequest } from "./acp";
+import { AcpClient, ExitPlanRequest, PermissionRequest } from "./acp";
 import { locateGrokCli } from "./cli-locator";
 import { TerminalManager } from "./terminal-manager";
 import {
@@ -20,15 +20,21 @@ type WebviewMsg =
   | { type: "newSession" }
   | { type: "cancel" }
   | { type: "pickModel" }
-  | { type: "pickEffort" }
-  | { type: "toggleMode" }
+  | { type: "setMode"; modeId: "agent" | "plan" | "yolo" }
   | { type: "removeChip"; id: string }
   | { type: "toggleChip"; id: string }
   | { type: "openFile"; path: string }
+  | { type: "openUrl"; url: string }
   | { type: "openDiff"; path: string; oldText: string; newText: string }
+  | { type: "setEffort"; level: string }
+  | { type: "openGlobalConfig" }
+  | { type: "openProjectConfig" }
+  | { type: "runMcpList" }
+  | { type: "showLogs" }
   | { type: "dropFile"; path: string; shift: boolean }
   | { type: "permissionAnswer"; requestId: number | string; optionId: string }
-  | { type: "exitPlanAnswer"; requestId: number | string; verdict: "approved" | "abandoned" | "rejected" };
+  | { type: "exitPlanAnswer"; requestId: number | string; verdict: "approved" | "abandoned" | "rejected" }
+  | { type: "setModel"; modelId: string };
 
 export class GrokSidebar implements vscode.WebviewViewProvider {
   public static readonly viewId = "grok.chat";
@@ -38,6 +44,8 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
   private chips: FileChip[] = [];
   private editorWatcher?: vscode.Disposable;
   private terminalManager = new TerminalManager();
+  private autoApprove = false;
+  private cliPath?: string;
 
   constructor(
     private context: vscode.ExtensionContext,
@@ -100,33 +108,20 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
     }
   }
 
-  async pickEffort(): Promise<void> {
-    const levels: EffortLevel[] = ["low", "medium", "high", "xhigh", "max"];
-    const cfg = vscode.workspace.getConfiguration("grok");
-    const current = cfg.get<EffortLevel>("defaultEffort", "high");
-    const picked = await vscode.window.showQuickPick(
-      levels.map((l) => ({ label: l, description: l === current ? "$(check) current" : "" })),
-      { placeHolder: "Pick effort level (applies on next session)" },
-    );
-    if (!picked) return;
-    await cfg.update("defaultEffort", picked.label, vscode.ConfigurationTarget.Global);
-    this.post({ type: "effortChanged", effort: picked.label });
-
-    const restart = await vscode.window.showInformationMessage(
-      `Effort set to "${picked.label}". Restart Grok session now?`,
-      "Restart",
-      "Later",
-    );
-    if (restart === "Restart") {
-      void this.startSession();
-    }
+  openModePopover(): void {
+    this.post({ type: "openModePopover" });
   }
 
-  async toggleMode(): Promise<void> {
+  async setMode(modeId: "agent" | "plan" | "yolo"): Promise<void> {
+    if (modeId === "yolo") {
+      this.autoApprove = true;
+      this.post({ type: "modeChanged", modeId: "yolo" });
+      return;
+    }
+    this.autoApprove = false;
     if (!this.client) return;
-    const next = this.client.currentModeId === "plan" ? "agent" : "plan";
     try {
-      await this.client.setMode(next);
+      await this.client.setMode(modeId);
     } catch (e) {
       vscode.window.showErrorMessage(`Couldn't switch mode: ${(e as Error).message}`);
     }
@@ -148,23 +143,27 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
   private async startSession(): Promise<AcpClient | undefined> {
     this.client?.dispose();
     this.client = undefined;
+    this.autoApprove = false;
+    this.post({ type: "modeChanged", modeId: "agent" });
 
     const cfg = vscode.workspace.getConfiguration("grok");
     const cliPath = locateGrokCli(cfg.get<string>("cliPath", ""));
+    this.cliPath = cliPath || undefined;
     if (!cliPath) {
       this.post({
         type: "error",
         text: "Grok CLI not found. Install with: curl -fsSL https://x.ai/cli/install.sh | bash",
       });
+      void this.offerInstallCli();
       return undefined;
     }
 
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
-    const effort = cfg.get<EffortLevel>("defaultEffort", "high");
+    const env = this.buildEnv(cwd);
     const client = new AcpClient({
       cliPath,
       cwd,
-      effort,
+      env,
       log: (msg) => this.output.appendLine(msg),
     });
     this.client = client;
@@ -195,7 +194,12 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
     client.on("initialized", (init) => {
       this.post({
         type: "initialized",
-        info: { cliPath, cwd, effort, init: { protocolVersion: init?.protocolVersion } },
+        info: {
+          cliPath,
+          cwd,
+          version: init?.serverInfo?.version ?? init?.version ?? null,
+          init: { protocolVersion: init?.protocolVersion },
+        },
       });
     });
     client.on("session", (res) =>
@@ -232,9 +236,14 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
     client.on("xaiNotification", (u) =>
       this.post({ type: "xaiNotification", update: u }),
     );
-    client.on("permissionRequest", (req: PermissionRequest) =>
-      this.post({ type: "permissionRequest", req }),
-    );
+    client.on("permissionRequest", (req: PermissionRequest) => {
+      if (this.autoApprove) {
+        const opt = req.options.find((o) => o.kind === "allow_always") ??
+                    req.options.find((o) => o.kind === "allow_once");
+        if (opt) { client.respondPermission(req.id, opt.optionId); return; }
+      }
+      this.post({ type: "permissionRequest", req });
+    });
     client.on("exitPlanRequest", (req: ExitPlanRequest) =>
       this.post({ type: "exitPlanRequest", req }),
     );
@@ -246,12 +255,13 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
       const defaultModel = cfg.get<string>("defaultModel", "");
       await client.newSession(defaultModel || undefined);
     } catch (err) {
-      this.post({
-        type: "error",
-        text: `Failed to start Grok: ${(err as Error).message ?? String(err)}`,
-      });
+      const msg = (err as any).message ?? String(err);
+      this.post({ type: "error", text: `Failed to start Grok: ${msg}` });
       client.dispose();
       this.client = undefined;
+      if (/auth/i.test(msg)) {
+        void this.offerAuthSetup(cliPath);
+      }
       return undefined;
     }
     return client;
@@ -274,11 +284,8 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
       case "pickModel":
         await this.pickModel();
         break;
-      case "pickEffort":
-        await this.pickEffort();
-        break;
-      case "toggleMode":
-        await this.toggleMode();
+      case "setMode":
+        await this.setMode(msg.modeId);
         break;
       case "removeChip":
         this.chips = removeChip(this.chips, msg.id);
@@ -294,6 +301,9 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
           vscode.Uri.file(msg.path),
         );
         break;
+      case "openUrl":
+        void vscode.env.openExternal(vscode.Uri.parse(msg.url));
+        break;
       case "openDiff":
         await this.openDiffEditor(msg.path, msg.oldText, msg.newText);
         break;
@@ -306,7 +316,49 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
       case "exitPlanAnswer":
         this.client?.respondExitPlan(msg.requestId, msg.verdict);
         break;
+      case "setModel":
+        if (this.client) {
+          try { await this.client.setModel(msg.modelId); }
+          catch (e) { vscode.window.showErrorMessage(`Failed to set model: ${(e as Error).message}`); }
+        }
+        break;
+      case "setEffort": {
+        const cfg2 = vscode.workspace.getConfiguration("grok");
+        await cfg2.update("defaultEffort", msg.level, vscode.ConfigurationTarget.Global);
+        await this.startSession();
+        break;
+      }
+      case "openGlobalConfig": {
+        const home = process.env.HOME || process.env.USERPROFILE || "";
+        const globalCfg = path.join(home, ".grok", "config.toml");
+        if (!fs.existsSync(globalCfg)) {
+          fs.mkdirSync(path.dirname(globalCfg), { recursive: true });
+          fs.writeFileSync(globalCfg, "# Grok global configuration\n");
+        }
+        await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(globalCfg));
+        break;
+      }
+      case "openProjectConfig": {
+        const cwd2 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+        const projCfg = path.join(cwd2, ".grok", "config.toml");
+        if (!fs.existsSync(projCfg)) {
+          fs.mkdirSync(path.dirname(projCfg), { recursive: true });
+          fs.writeFileSync(projCfg, "# Grok project configuration\n# MCP servers here apply to this workspace only.\n");
+        }
+        await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(projCfg));
+        break;
+      }
+      case "runMcpList": {
+        const term = vscode.window.createTerminal("Grok MCP");
+        term.show();
+        term.sendText(`"${this.cliPath || "grok"}" mcp`);
+        break;
+      }
+      case "showLogs":
+        this.output.show();
+        break;
     }
+
   }
 
   private async openDiffEditor(filePath: string, oldText: string, newText: string): Promise<void> {
@@ -355,7 +407,8 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
     this.chips = [];
     this.postChips();
 
-    this.post({ type: "userMessage", text: finalPrompt });
+    const sentChips = chips.filter((c) => !c.hidden);
+    this.post({ type: "userMessage", text, chips: sentChips });
     this.post({ type: "agentStart" });
 
     try {
@@ -370,9 +423,11 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
 
   private postInitialState(): void {
     const cfg = vscode.workspace.getConfiguration("grok");
+    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
     this.post({
       type: "initialState",
-      effort: cfg.get("defaultEffort", "high"),
+      effort: cfg.get("defaultEffort", ""),
+      cwd,
       useCtrlEnter: cfg.get("useCtrlEnterToSend", false),
     });
     if (cfg.get<boolean>("includeActiveFileByDefault", true)) {
@@ -413,6 +468,63 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
     this.postChips();
   }
 
+  private buildEnv(cwd: string): NodeJS.ProcessEnv {
+    const dotEnv: Record<string, string> = {};
+    try {
+      const content = fs.readFileSync(path.join(cwd, ".env"), "utf8");
+      for (const line of content.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const eq = trimmed.indexOf("=");
+        if (eq < 1) continue;
+        const key = trimmed.slice(0, eq).trim();
+        const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+        if (key) dotEnv[key] = val;
+      }
+    } catch { /* no .env — fine */ }
+
+    const env: NodeJS.ProcessEnv = { ...process.env, ...dotEnv };
+
+    // XAI_API_KEY is the generic xAI key name; grok CLI needs GROK_CODE_XAI_API_KEY
+    if (dotEnv["XAI_API_KEY"] && !env["GROK_CODE_XAI_API_KEY"]) {
+      env["GROK_CODE_XAI_API_KEY"] = dotEnv["XAI_API_KEY"];
+    }
+
+    if (Object.keys(dotEnv).length > 0) {
+      this.output.appendLine(`[env] loaded ${Object.keys(dotEnv).length} var(s) from .env`);
+    }
+    return env;
+  }
+
+  private async offerInstallCli(): Promise<void> {
+    const action = await vscode.window.showErrorMessage(
+      "Grok CLI not found.",
+      "Install Grok CLI",
+      "Set CLI Path",
+    );
+    if (action === "Install Grok CLI") {
+      const term = vscode.window.createTerminal("Install Grok");
+      term.show();
+      term.sendText(
+        'curl -fsSL https://x.ai/cli/install.sh | bash && echo "\\nDone. Reload VS Code (Ctrl+Shift+P → Developer: Reload Window) to start Grok."',
+      );
+    } else if (action === "Set CLI Path") {
+      await vscode.commands.executeCommand("workbench.action.openSettings", "grok.cliPath");
+    }
+  }
+
+  private async offerAuthSetup(cliPath: string): Promise<void> {
+    const action = await vscode.window.showErrorMessage(
+      "Grok: Authentication required. Run `grok login` to sign in.",
+      "Run grok login",
+    );
+    if (action === "Run grok login") {
+      const term = vscode.window.createTerminal("Grok Login");
+      term.show();
+      term.sendText(`"${cliPath}" login`);
+    }
+  }
+
   private getHtml(webview: vscode.Webview): string {
     const nonce = getNonce();
     const mediaUri = (file: string) =>
@@ -429,41 +541,46 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
 <link rel="stylesheet" href="${mediaUri("chat.css")}" />
 </head>
 <body>
-  <header class="topbar">
-    <button id="model-btn" class="pill" title="Pick model">grok-build</button>
-    <button id="effort-btn" class="pill" title="Pick effort">effort: high</button>
-    <button id="mode-btn" class="pill" title="Toggle plan/agent mode">mode: agent</button>
-    <button id="new-btn" class="pill ghost" title="New session">+ new</button>
+
+  <header class="top-bar">
+    <button id="new-btn" class="toolbar-btn" title="New session"></button>
   </header>
 
   <main id="messages" class="messages">
     <div class="welcome">
-      <img src="${resourceUri("grok-mark.svg")}" alt="Grok" class="welcome-mark" />
-      <h2>Grok</h2>
+      <img src="${resourceUri("grok-mark-light.svg")}" alt="Grok" class="welcome-mark" />
+      <h2>Grok Build</h2>
+      <p class="welcome-byline muted">by Pawel Huryn (<a href="https://www.productcompass.pm" class="muted-link">The Product Compass</a>)</p>
       <p id="welcome-version" class="muted">starting...</p>
       <ul class="welcome-tips">
         <li>Type your prompt below. <kbd>Enter</kbd> to send.</li>
         <li>Slash commands: <code>/compact</code>, <code>/new</code>, <code>/plan</code>, <code>/context</code>, <code>/yolo</code>.</li>
-        <li>Active editor file is added as context — click <span aria-hidden="true">👁</span> to hide.</li>
+        <li>Active files appear in the toolbar below — click to toggle in/out of context.</li>
       </ul>
     </div>
   </main>
 
-  <div id="chips" class="chips"></div>
-
   <footer class="composer">
     <textarea id="input" placeholder="Ask Grok..." rows="3"></textarea>
-    <div class="composer-bottom">
-      <div id="hint" class="muted small"></div>
-      <div class="context-donut" id="donut" title="Context usage">
-        <svg width="22" height="22" viewBox="0 0 22 22">
-          <circle cx="11" cy="11" r="9" fill="none" stroke="var(--vscode-editorWidget-border,#444)" stroke-width="2"/>
-          <circle id="donut-arc" cx="11" cy="11" r="9" fill="none" stroke="var(--vscode-charts-green,#4ec9b0)" stroke-width="2" stroke-dasharray="0 999" transform="rotate(-90 11 11)"/>
-        </svg>
-        <span id="donut-label" class="small muted">0%</span>
+    <div class="composer-toolbar">
+      <div class="toolbar-left">
+        <button id="gear-btn" class="toolbar-btn" title="Settings"></button>
+        <div class="context-donut" id="donut" title="Context usage">
+          <svg width="22" height="22" viewBox="0 0 22 22">
+            <circle cx="11" cy="11" r="9" fill="none" stroke="var(--vscode-editorWidget-border,#444)" stroke-width="2"/>
+            <circle id="donut-arc" cx="11" cy="11" r="9" fill="none" stroke="var(--vscode-charts-green,#4ec9b0)" stroke-width="2" stroke-dasharray="0 999" transform="rotate(-90 11 11)"/>
+          </svg>
+          <span id="donut-label" class="small muted">0%</span>
+        </div>
+        <div id="chips"></div>
       </div>
-      <button id="send-btn" class="send">Send</button>
+      <div class="toolbar-right">
+        <button id="mode-btn" class="toolbar-btn" title="Pick mode"></button>
+        <button id="send-btn" class="send"></button>
+      </div>
     </div>
+    <div id="mode-popover" class="toolbar-popover" hidden></div>
+    <div id="gear-popover" class="toolbar-popover gear-popover" hidden></div>
     <div id="slash-popover" class="slash-popover" hidden></div>
   </footer>
 
