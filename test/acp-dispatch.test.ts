@@ -151,10 +151,12 @@ describe("response builders", () => {
     });
   });
 
-  it("makeExitPlanResponse sends flat outcome string", () => {
+  it("makeExitPlanResponse: approved sends result, rejected/abandoned send error", () => {
     expect(makeExitPlanResponse(9, "approved").result).toEqual({ outcome: "approved" });
-    expect(makeExitPlanResponse(9, "abandoned").result).toEqual({ outcome: "abandoned" });
-    expect(makeExitPlanResponse(9, "rejected").result).toEqual({ outcome: "rejected" });
+    expect(makeExitPlanResponse(9, "rejected").error?.code).toBe(-32000);
+    expect(makeExitPlanResponse(9, "rejected").result).toBeUndefined();
+    expect(makeExitPlanResponse(9, "abandoned").error?.code).toBe(-32000);
+    expect(makeExitPlanResponse(9, "abandoned").result).toBeUndefined();
   });
 
   it("makeExitPlanResponse wraps in jsonrpc 2.0 envelope", () => {

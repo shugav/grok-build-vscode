@@ -360,7 +360,7 @@ export class AcpClient extends EventEmitter {
         const req: ExitPlanRequest = {
           id,
           sessionId: params?.sessionId ?? this.sessionId ?? "",
-          plan: params?.plan ?? params?.input?.plan ?? "",
+          plan: params?.planContent ?? params?.plan ?? params?.input?.plan ?? "",
         };
         this.emit("exitPlanRequest", req);
         return;

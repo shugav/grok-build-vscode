@@ -97,7 +97,13 @@ export function makeExitPlanResponse(
   id: number | string,
   verdict: "approved" | "abandoned" | "rejected",
 ) {
-  return { jsonrpc: "2.0", id, result: { outcome: verdict } };
+  if (verdict === "approved") {
+    return { jsonrpc: "2.0", id, result: { outcome: "approved" } };
+  }
+  // Reject and Abandon must be sent as JSON-RPC errors — the CLI treats any
+  // successful result as approval regardless of the outcome value.
+  const message = verdict === "rejected" ? "User rejected the plan" : "User abandoned the plan";
+  return { jsonrpc: "2.0", id, error: { code: -32000, message } };
 }
 
 export function makeAckResponse(id: number | string, result: any = {}) {

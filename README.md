@@ -1,16 +1,26 @@
 # Grok Build for VS Code
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC?logo=visualstudiocode&logoColor=white)](https://code.visualstudio.com) [![Grok Build](https://img.shields.io/badge/xAI-Grok%20Build-000000?logo=x&logoColor=white)](https://x.ai) [![The Product Compass](https://img.shields.io/badge/The%20Product%20Compass-productcompass.pm-FF6B35)](https://www.productcompass.pm)
 
 Native VS Code sidebar for **xAI's Grok Build** CLI, driven by `grok agent stdio` over the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
 
 xAI's docs list Zed, Neovim, Emacs, and marimo as ACP-compatible. This extension fills the VS Code gap.
 
-## Platform support
+![Welcome screen and mode picker](docs/screenshots/start.png)
+
+---
+
+<details>
+<summary><strong>Platform support</strong></summary>
 
 **macOS and Linux only.** The `grok` CLI does not have a Windows build. On Windows, use WSL2 with VS Code's Remote-WSL extension and install everything on the WSL side.
 
-## Prerequisites
+</details>
+
+---
+
+<details>
+<summary><strong>Prerequisites</strong></summary>
 
 Install the Grok CLI, then sign in:
 
@@ -31,7 +41,12 @@ Or add it to `.env` in your workspace root — the extension loads it automatica
 
 > **Note:** setting `XAI_API_KEY` takes precedence over your `grok /login` session. With a subscription (login only), the model picker shows **Grok Build**. With an API key you also get access to **grok-4.20** (3 variants), **grok-4.3**, and **grok-imagine** (3 options).
 
-## Install
+</details>
+
+---
+
+<details>
+<summary><strong>Install</strong></summary>
 
 ```bash
 git clone https://github.com/phuryn/grok-build-vscode.git
@@ -41,6 +56,10 @@ npm install
 ```
 
 Then reload VS Code (**Ctrl+Shift+P → Developer: Reload Window**) and click the Grok icon in the activity bar.
+
+> **Tip — move to the secondary side bar:** Right-click the Grok icon in the activity bar → **Move To → Secondary Side Bar**. Grok then sits in the right panel alongside Claude Code, Copilot Chat, or other AI tools, leaving the left side bar free for Explorer and Source Control.
+>
+> ![Right-click the Grok icon → Move To → Secondary Side Bar](docs/screenshots/side.png)
 
 **Manual install from VSIX:**
 
@@ -57,7 +76,12 @@ code --install-extension grok-vscode-1.0.0.vsix
 code --uninstall-extension phuryn.grok-vscode
 ```
 
-## How a session starts
+</details>
+
+---
+
+<details>
+<summary><strong>How a session starts</strong></summary>
 
 When the panel opens (or you click **+** for a new session), the extension:
 
@@ -69,7 +93,12 @@ When the panel opens (or you click **+** for a new session), the extension:
 
 All session state, tool execution, MCP servers, subagents, memory, and plan-mode bookkeeping live inside that CLI process. The extension is a thin UI shell over ACP.
 
-## Usage
+</details>
+
+---
+
+<details>
+<summary><strong>Usage</strong></summary>
 
 ### Sending a prompt
 
@@ -168,13 +197,13 @@ For file edits, click **open diff →** to preview the exact change in the VS Co
 
 ### Mode
 
-The mode button in the bottom toolbar (shield / list-tree / lightning icon) opens a picker with three options:
+The mode button in the bottom toolbar opens a picker with three options:
 
-| Mode | Icon | Behaviour |
-|---|---|---|
-| **Agent** | 🛡 shield | Normal mode — the agent acts and asks for permission when needed |
-| **Plan** | ⋮ list-tree | The agent drafts a complete plan and waits for your Approve / Reject before doing anything |
-| **YOLO** | ⚡ lightning | Auto-approves every permission request; no cards shown. Handled entirely in the extension — the CLI process and its session are preserved, no restart |
+| Mode | Behaviour |
+|---|---|
+| **Agent mode** | Normal mode — the agent acts and asks for permission when needed |
+| **Plan mode** | The agent drafts a complete plan and waits for your Approve / Reject before doing anything |
+| **YOLO** | Auto-approves every permission request; no cards shown. Handled entirely in the extension — the CLI process and its session are preserved, no restart |
 
 Switching from YOLO back to Agent or Plan re-enables permission cards immediately.
 
@@ -208,7 +237,7 @@ Click the **model name button** in the gear popover to pick from the models your
 
 ### Context usage
 
-The donut in the bottom toolbar shows token usage as a percentage of the model's context window (e.g. 500k tokens for `grok-build`). It updates after each prompt response.
+The donut in the bottom toolbar shows token usage as `usedK/maxK` (e.g. `74K/500K`). It updates after each prompt response.
 
 When context fills up, type `/compact` to compress the conversation, or click **+** for a fresh session.
 
@@ -225,8 +254,11 @@ Click **+** (new session) to kill the current `grok agent stdio` process and spa
 
 Click the **gear** icon in the bottom toolbar to open the settings panel:
 
+**Model and Effort**
+- *Model name button* — opens the model picker
+- *Reasoning Effort dots* — pick effort level (Low → Max)
+
 **Session**
-- *Reasoning Effort* — opens the effort picker (see above)
 - *Compact conversation* — sends `/compact` to compress context without leaving the UI
 
 **Config**
@@ -243,15 +275,25 @@ MCP servers are configured in the CLI, not in the extension. Add them to `~/.gro
 
 Use the gear → *Open global config* shortcut to reach the file, then restart the session (**+**) for changes to take effect.
 
-## Screenshots
+</details>
 
-![Welcome screen and mode picker](docs/screenshots/start.png)
+---
+
+<details>
+<summary><strong>Screenshots</strong></summary>
+
+![Move Grok to the secondary side bar](docs/screenshots/side.png)
 
 ![Gear popover — Model and Effort settings with XHigh tooltip](docs/screenshots/model_effort.png)
 
 ![YOLO mode active with slash command autocomplete](docs/screenshots/yolo.png)
 
-## Configuration
+</details>
+
+---
+
+<details>
+<summary><strong>Configuration</strong></summary>
 
 | Setting | Default | Notes |
 |---|---|---|
@@ -261,7 +303,12 @@ Use the gear → *Open global config* shortcut to reach the file, then restart t
 | `grok.includeActiveFileByDefault` | `true` | Auto-add the active editor as a context chip. |
 | `grok.useCtrlEnterToSend` | `false` | When true, Enter inserts a newline and Ctrl/Cmd+Enter sends. |
 
-## Architecture
+</details>
+
+---
+
+<details>
+<summary><strong>Architecture</strong></summary>
 
 ```
 VS Code webview ──postMessage──► extension host ──JSON-RPC over stdin/stdout──► grok agent stdio
@@ -274,24 +321,49 @@ VS Code webview ──postMessage──► extension host ──JSON-RPC over st
 
 The extension implements every mandatory server→client handler. Missing any of them would crash the agent mid-session.
 
-## Commands (Command Palette)
+</details>
 
-`Grok: Open` · `Grok: New Session` · `Grok: Pick Model` · `Grok: Toggle Plan / Agent Mode` · `Grok: Send File` · `Grok: Send Selection` · `Grok: Insert @-Mention` · `Grok: Show Logs`
+---
 
-## Keybindings
+<details>
+<summary><strong>VS Code commands &amp; keybindings</strong></summary>
+
+These are VS Code commands, not Grok slash commands. Open them with **Ctrl+Shift+P** (or **Cmd+Shift+P**) and type "Grok".
+
+| Command | What it does |
+|---|---|
+| `Grok: Open` | Open the Grok sidebar |
+| `Grok: New Session` | Start a fresh session |
+| `Grok: Pick Model` | Open the model picker |
+| `Grok: Toggle Plan / Agent Mode` | Switch between plan and agent mode |
+| `Grok: Send File` | Add the selected file to context |
+| `Grok: Send Selection` | Send the current text selection to Grok |
+| `Grok: Insert @-Mention` | Insert an `@`-mention for the active file into the composer |
+| `Grok: Show Logs` | Open the Grok output channel (ACP messages, errors) |
+
+**Keybindings**
 
 | Key | Action |
 |---|---|
 | `Ctrl+;` / `Cmd+;` | Open Grok sidebar |
 | `Alt+G` | Insert `@`-mention for the active file (when editor focused) |
 
-## Tests
+</details>
+
+---
+
+<details>
+<summary><strong>Tests</strong></summary>
 
 ```bash
 npm test
 ```
 
 60 tests covering ACP line parsing, session-update routing, prompt-meta extraction, response builders, file-chip CRUD, prompt building, slash-command filter, CLI locator, and terminal manager. All pure logic — no VS Code process required.
+
+</details>
+
+---
 
 ## License
 
