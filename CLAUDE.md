@@ -30,7 +30,7 @@ Pure modules (`acp-dispatch`, `chips`, `prompt-builder`, `slash-filter`, `cli-lo
 ```bash
 npm install
 npm test         # 61 tests, <1s, vitest
-npm run package  # → grok-vscode-phuryn-1.0.0.vsix
+npm run package  # → grok-vscode-phuryn-1.0.1.vsix
 ```
 
 ## Install

@@ -2,25 +2,21 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC?logo=visualstudiocode&logoColor=white)](https://code.visualstudio.com) [![Grok Build](https://img.shields.io/badge/xAI-Grok%20Build-000000)](https://x.ai) [![The Product Compass](https://img.shields.io/badge/The%20Product%20Compass-productcompass.pm-FF6B35)](https://www.productcompass.pm)
 
-Native VS Code sidebar for **xAI's Grok Build** CLI, driven by `grok agent stdio` over the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
+A full **embedded chat UI** for Grok Build — not a terminal launcher. Streaming responses, collapsible thinking traces, tool call cards, permission cards with diff preview, file context chips, model and effort picker, YOLO mode, and slash command autocomplete. Driven by `grok agent stdio` over the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
 
-This extension fills the VS Code gap. Works with SuperGrok Heavy subscription or xAI API key. Not affiliated with xAI.
+Works with SuperGrok Heavy subscription or xAI API key. Not affiliated with xAI.
 
 ![Welcome screen and mode picker](docs/screenshots/start.png)
 
 ---
 
-<details>
-<summary><strong>Platform support</strong></summary>
+## Platform support
 
 **macOS and Linux only.** The `grok` CLI does not have a Windows build. On Windows, use WSL2 with VS Code's Remote-WSL extension and install everything on the WSL side.
 
-</details>
-
 ---
 
-<details>
-<summary><strong>Prerequisites</strong></summary>
+## Prerequisites
 
 Install the Grok CLI, then sign in:
 
@@ -41,12 +37,9 @@ Or add it to `.env` in your workspace root — the extension loads it automatica
 
 > **Note:** setting `XAI_API_KEY` takes precedence over your `grok /login` session. With a subscription (login only), the model picker shows **Grok Build**. With an API key you also get access to **grok-4.20** (3 variants), **grok-4.3**, and **grok-imagine** (3 options).
 
-</details>
-
 ---
 
-<details>
-<summary><strong>Install</strong></summary>
+## Install
 
 **Simplest installation via VS Code**
 ![VS Code Extensions Marketplace](docs/screenshots/install.png)
@@ -56,7 +49,7 @@ VSIX from this repo (no build required):
 Download the latest VSIX from [`releases/`](releases/) and install it:
 
 ```bash
-code --install-extension releases/grok-vscode-phuryn-1.0.0.vsix
+code --install-extension releases/grok-vscode-phuryn-1.0.1.vsix
 ```
 
 Or install from source — clone, build, and install in one step:
@@ -82,9 +75,18 @@ Then reload VS Code (**Ctrl+Shift+P → Developer: Reload Window**) and click th
 code --uninstall-extension PawelHuryn.grok-vscode-phuryn
 ```
 
-</details>
-
 ---
+
+## More
+
+<details>
+<summary><strong>Screenshots</strong></summary>
+
+![Thinking, collapsing responses, formatting markdown](docs/screenshots/interactions.png)
+
+![YOLO mode active with slash command autocomplete](docs/screenshots/yolo.png)
+
+</details>
 
 <details>
 <summary><strong>How a session starts</strong></summary>
@@ -101,16 +103,14 @@ All session state, tool execution, MCP servers, subagents, memory, and plan-mode
 
 </details>
 
----
-
 <details>
 <summary><strong>Usage</strong></summary>
 
-### Sending a prompt
+#### Sending a prompt
 
 Type in the composer and press **Enter** (or **Ctrl/Cmd+Enter** if you've enabled that in settings). The agent streams its response in the chat. Thinking traces appear as collapsible "Thought for Xs" blocks.
 
-### Slash commands
+#### Slash commands
 
 Type `/` to open autocomplete. Commands are sourced live from the CLI via `available_commands_update` — the list reflects exactly what the running CLI version supports.
 
@@ -170,7 +170,7 @@ Type `/` to open autocomplete. Commands are sourced live from the CLI via `avail
 | `/create-skill` | Create a new Grok skill |
 | `/feedback` | Send feedback about the current session |
 
-### Files in context (chips)
+#### Files in context (chips)
 
 The active editor file is added as a chip automatically. Chips are sent to the agent as `@/path/to/file` references in the prompt — the path is resolved by the CLI, not embedded inline. This means file content stays up to date without being pasted into chat history.
 
@@ -180,7 +180,7 @@ The active editor file is added as a chip automatically. Chips are sent to the a
 - Select text, right-click → **Grok: Send Selection**
 - **Alt+G** inserts an `@`-mention for the active file directly into the prompt
 
-### Tool calls
+#### Tool calls
 
 When the agent reads files, runs shell commands, or edits code, each action appears in the chat:
 
@@ -189,7 +189,7 @@ When the agent reads files, runs shell commands, or edits code, each action appe
 
 Tool calls don't affect the conversation visible to the model — they're handled by the CLI process.
 
-### Permission cards
+#### Permission cards
 
 Before the agent writes a file or runs a command, it asks for permission. A card appears in the chat with options:
 
@@ -201,7 +201,7 @@ Before the agent writes a file or runs a command, it asks for permission. A card
 
 For file edits, click **open diff →** to preview the exact change in the VS Code diff editor before deciding.
 
-### Mode
+#### Mode
 
 The mode button in the bottom toolbar opens a picker with three options:
 
@@ -220,7 +220,7 @@ Switching from YOLO back to Agent re-enables permission cards immediately.
 - **Plan** → `session/set_mode: "plan"` sent to the CLI. The CLI collects a full plan and sends it back via `x.ai/exit_plan_mode`. *Not yet usable via ACP — see above.*
 - **YOLO** → no ACP call; the extension simply auto-responds "allow always" to every incoming `session/request_permission` request. The session and CLI process are untouched.
 
-### Reasoning Effort
+#### Reasoning Effort
 
 Click the **gear** icon → *Reasoning Effort* to choose how deeply the model thinks before responding:
 
@@ -239,17 +239,17 @@ If the current session has chat history, a dialog appears with two options:
 - **Summarize & Restart** — asks Grok to summarize the conversation, starts a fresh session, then automatically sends the summary as context so Grok can pick up where it left off.
 - **Just Restart** — discards the current session immediately and clears the chat.
 
-### Models
+#### Models
 
 Click the **model name button** in the gear popover to pick from the models your subscription provides. The list comes from the CLI's `session/new` response — it reflects your account's available models. Switching model is live (`session/set_model`), no restart needed.
 
-### Context usage
+#### Context usage
 
 The donut in the bottom toolbar shows token usage as `usedK/maxK` (e.g. `74K/500K`). It updates after each prompt response.
 
 When context fills up, type `/compact` to compress the conversation, or click **+** for a fresh session.
 
-### Session restart
+#### Session restart
 
 Click **+** (new session) to kill the current `grok agent stdio` process and spawn a fresh one. On restart:
 
@@ -258,7 +258,7 @@ Click **+** (new session) to kill the current `grok agent stdio` process and spa
 - Model uses `grok.defaultModel` (or CLI default if unset)
 - Chat history is cleared; memory persisted by the CLI (in `~/.grok/`) is not affected
 
-### Settings (gear popover)
+#### Settings (gear popover)
 
 Click the **gear** icon in the bottom toolbar to open the settings panel:
 
@@ -277,28 +277,13 @@ Click the **gear** icon in the bottom toolbar to open the settings panel:
 **Debug**
 - *Show extension logs* — reveals the "Grok" output channel, which logs every ACP message sent and received. Useful for diagnosing connection or permission issues.
 
-### MCP servers
+#### MCP servers
 
 MCP servers are configured in the CLI, not in the extension. Add them to `~/.grok/config.toml` (global) or `.grok/config.toml` (project). The extension does not interfere — it passes no `mcpServers` field to `session/new`, so the CLI picks up its own configuration automatically.
 
 Use the gear → *Open global config* shortcut to reach the file, then restart the session (**+**) for changes to take effect.
 
 </details>
-
----
-
-<details>
-<summary><strong>Screenshots</strong></summary>
-
-![Move Grok to the secondary side bar](docs/screenshots/side.png)
-
-![Thinking, collapsing responses, formatting markdown](docs/screenshots/interactions.png)
-
-![YOLO mode active with slash command autocomplete](docs/screenshots/yolo.png)
-
-</details>
-
----
 
 <details>
 <summary><strong>Configuration</strong></summary>
@@ -312,8 +297,6 @@ Use the gear → *Open global config* shortcut to reach the file, then restart t
 | `grok.useCtrlEnterToSend` | `false` | When true, Enter inserts a newline and Ctrl/Cmd+Enter sends. |
 
 </details>
-
----
 
 <details>
 <summary><strong>Architecture</strong></summary>
@@ -330,8 +313,6 @@ VS Code webview ──postMessage──► extension host ──JSON-RPC over st
 The extension implements every mandatory server→client handler. Missing any of them would crash the agent mid-session.
 
 </details>
-
----
 
 <details>
 <summary><strong>VS Code commands &amp; keybindings</strong></summary>
@@ -357,8 +338,6 @@ These are VS Code commands, not Grok slash commands. Open them with **Ctrl+Shift
 | `Alt+G` | Insert `@`-mention for the active file (when editor focused) |
 
 </details>
-
----
 
 <details>
 <summary><strong>Tests</strong></summary>
