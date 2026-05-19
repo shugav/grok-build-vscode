@@ -4,7 +4,7 @@ VS Code sidebar extension for **xAI's Grok Build CLI**, driven by `grok agent st
 
 ## Status
 
-v0.1 (working, pre-publish, not in marketplace yet). 61 unit tests passing. Smoke-tested end-to-end against `grok` v0.1.211 on Linux and Windows-via-WSL.
+v1.0.3 (published on the VS Code Marketplace). 61 unit tests passing. Smoke-tested end-to-end against `grok` v0.1.211 on Linux and Windows-via-WSL.
 
 ## Module map
 
@@ -30,7 +30,7 @@ Pure modules (`acp-dispatch`, `chips`, `prompt-builder`, `slash-filter`, `cli-lo
 ```bash
 npm install
 npm test         # 61 tests, <1s, vitest
-npm run package  # → grok-vscode-phuryn-1.0.1.vsix
+npm run package  # → grok-vscode-phuryn-1.0.3.vsix
 ```
 
 ## Install
@@ -47,13 +47,13 @@ See `README.md § Install` for the full per-platform matrix.
 - Streaming `agent_message_chunk` + `agent_thought_chunk`
 - Handlers (mandatory or the agent crashes): `fs/read_text_file`, `fs/write_text_file`, `terminal/{create,output,wait_for_exit,kill,release}`
 - `session/request_permission` → chat card with `allow-always` / `allow-once` / `reject-once`, diff editor preview for `kind:"edit"`
-- `session/set_mode` (plan ↔ agent) + `x.ai/exit_plan_mode` Approve/Abandon/Reject card
+- `session/set_mode` wired but Plan is UI-disabled (the CLI's `x.ai/exit_plan_mode` treats any client response as approval — see Known limits). The mode picker exposes Agent and YOLO only.
 - `--reasoning-effort` flag at agent spawn (`low | medium | high | xhigh | max`)
 - `available_commands_update` → slash autocomplete
-- `current_mode_update` → top-bar pill
+- `current_mode_update` → bottom-toolbar mode button (the top bar was removed in 0.9.0)
 - `_meta.totalTokens` → context donut
 
-## Known v0.1 limits
+## Known limits
 
 - Subagent messages render inline as tool cards — no dedicated inspector
 - No worktree UI
@@ -68,18 +68,15 @@ See `README.md § Install` for the full per-platform matrix.
 
 ## What's next (priority order)
 
-1. Real screenshots replacing placeholders in `docs/screenshots/`
-2. `@vscode/test-electron` integration suite (scoped in `TESTS.md § v0.2`)
-3. Status-bar indicator (current model + effort + token usage)
-4. Subagent inspector (collapsible side panel)
-5. Worktree UI (`Grok: New Worktree Session`)
-6. Optional: auto-move view to secondary side bar on first activation (`workbench.action.moveView`)
+1. `@vscode/test-electron` integration suite (scoped in `TESTS.md § v0.2`)
+2. Status-bar indicator (current model + effort + token usage)
+3. Subagent inspector (collapsible side panel)
+4. Worktree UI (`Grok: New Worktree Session`)
+5. Optional: auto-move view to secondary side bar on first activation (`workbench.action.moveView`)
 
-## Publishing (when ready)
+## Publishing
 
-One-time: register `PawelHuryn` publisher at marketplace.visualstudio.com/manage, generate Azure DevOps PAT with *Marketplace > Manage* scope, `npx @vscode/vsce login PawelHuryn`.
-
-Per-release: bump version in `package.json`, `npm test`, `npm run publish`.
+Per-release: bump version in `package.json`, `npm test`, `npm run publish`. The `PawelHuryn` publisher is already registered and authenticated locally.
 
 ## Repo conventions
 
@@ -88,3 +85,4 @@ Per-release: bump version in `package.json`, `npm test`, `npm run publish`.
 - Don't introduce abstractions speculatively
 - Don't add comments that explain what well-named code already says
 - 61 tests is the floor — every PR should keep that green
+- **Version bumps are user-initiated.** Iterate at the current version (rebuild the same vsix and reinstall locally) until the user says to bump and publish. Don't bump `package.json` on your own.

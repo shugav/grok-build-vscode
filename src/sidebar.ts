@@ -34,7 +34,10 @@ type WebviewMsg =
   | { type: "dropFile"; path: string; shift: boolean }
   | { type: "permissionAnswer"; requestId: number | string; optionId: string }
   | { type: "exitPlanAnswer"; requestId: number | string; verdict: "approved" | "abandoned" | "rejected" }
-  | { type: "setModel"; modelId: string };
+  | { type: "setModel"; modelId: string }
+  | { type: "runInstallCmd" }
+  | { type: "runGrokLogin" }
+  | { type: "recheckConnection" };
 
 export class GrokSidebar implements vscode.WebviewViewProvider {
   public static readonly viewId = "grok.chat";
@@ -159,11 +162,7 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
     this.cliPath = cliPath || undefined;
     if (!cliPath) {
       if (gen !== this.sessionGen) return undefined;
-      this.post({
-        type: "error",
-        text: "Grok CLI not found. Install with: curl -fsSL https://x.ai/cli/install.sh | bash",
-      });
-      void this.offerInstallCli();
+      this.post({ type: "onboarding", state: "missing-cli", platform: process.platform });
       return undefined;
     }
 
@@ -300,11 +299,12 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
     } catch (err) {
       if (gen !== this.sessionGen) { client.dispose(); return undefined; }
       const msg = (err as any).message ?? String(err);
-      this.post({ type: "error", text: `Failed to start Grok: ${msg}` });
       client.dispose();
       this.client = undefined;
-      if (/auth/i.test(msg)) {
-        void this.offerAuthSetup(cliPath);
+      if (/auth|unauthor|forbidden|401|403|api[_\s-]?key|credential|sign.?in/i.test(msg)) {
+        this.post({ type: "onboarding", state: "auth-required" });
+      } else {
+        this.post({ type: "error", text: `Failed to start Grok: ${msg}` });
       }
       return undefined;
     }
@@ -339,12 +339,32 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
         this.chips = toggleChip(this.chips, msg.id);
         this.postChips();
         break;
-      case "openFile":
-        void vscode.commands.executeCommand(
-          "vscode.open",
-          vscode.Uri.file(msg.path),
-        );
+      case "openFile": {
+        const m = msg.path.match(/^([^#]+?)(?:#L(\d+)(?:-L?(\d+))?)?$/i);
+        let p = m ? m[1] : msg.path;
+        const startStr = m && m[2];
+        const endStr = m && m[3];
+        if (!path.isAbsolute(p)) {
+          const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          if (root) p = path.join(root, p);
+        }
+        const uri = vscode.Uri.file(p);
+        if (startStr) {
+          const startLine = Math.max(0, Number(startStr) - 1);
+          const endLine = endStr ? Math.max(startLine, Number(endStr) - 1) : startLine;
+          try {
+            const doc = await vscode.workspace.openTextDocument(uri);
+            await vscode.window.showTextDocument(doc, {
+              selection: new vscode.Range(startLine, 0, endLine, Number.MAX_SAFE_INTEGER),
+            });
+          } catch {
+            void vscode.commands.executeCommand("vscode.open", uri);
+          }
+        } else {
+          void vscode.commands.executeCommand("vscode.open", uri);
+        }
         break;
+      }
       case "openUrl":
         void vscode.env.openExternal(vscode.Uri.parse(msg.url));
         break;
@@ -402,9 +422,10 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
           await currentClient.prompt(
             "Summarize our conversation so far in a concise paragraph. Be brief.",
           );
-        } catch { /* best effort */ }
-        currentClient.off("messageChunk", captureChunk);
-        this.suppressContent = false;
+        } catch { /* best effort */ } finally {
+          currentClient.off("messageChunk", captureChunk);
+          this.suppressContent = false;
+        }
         const summary = chunks.join("").trim();
 
         await this.startSession(); // resets suppressContent to false
@@ -414,8 +435,9 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
           this.suppressContent = true;
           try {
             await this.client.prompt(`[Context from previous session]\n${summary}`);
-          } catch { /* best effort */ }
-          this.suppressContent = false;
+          } catch { /* best effort */ } finally {
+            this.suppressContent = false;
+          }
         }
         break;
       }
@@ -447,6 +469,30 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
       }
       case "showLogs":
         this.output.show();
+        break;
+      case "runInstallCmd": {
+        const term = vscode.window.createTerminal("Install Grok");
+        term.show();
+        term.sendText(
+          'curl -fsSL https://x.ai/cli/install.sh | bash && echo "\\nDone. Click \'Re-check connection\' in the Grok sidebar."',
+        );
+        break;
+      }
+      case "runGrokLogin": {
+        const cliPath = this.cliPath || locateGrokCli(
+          vscode.workspace.getConfiguration("grok").get<string>("cliPath", ""),
+        );
+        if (!cliPath) {
+          this.post({ type: "onboarding", state: "missing-cli" });
+          break;
+        }
+        const term = vscode.window.createTerminal("Grok Login");
+        term.show();
+        term.sendText(`"${cliPath}" /login`);
+        break;
+      }
+      case "recheckConnection":
+        await this.startSession();
         break;
     }
 
@@ -583,44 +629,16 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
 
     const env: NodeJS.ProcessEnv = { ...process.env, ...dotEnv };
 
-    // XAI_API_KEY is the generic xAI key name; grok CLI needs GROK_CODE_XAI_API_KEY
-    if (dotEnv["XAI_API_KEY"] && !env["GROK_CODE_XAI_API_KEY"]) {
-      env["GROK_CODE_XAI_API_KEY"] = dotEnv["XAI_API_KEY"];
+    // XAI_API_KEY is the generic xAI key name; grok CLI needs GROK_CODE_XAI_API_KEY.
+    // Map from either source (workspace .env or the user's shell environment).
+    if (env["XAI_API_KEY"] && !env["GROK_CODE_XAI_API_KEY"]) {
+      env["GROK_CODE_XAI_API_KEY"] = env["XAI_API_KEY"];
     }
 
     if (Object.keys(dotEnv).length > 0) {
       this.output.appendLine(`[env] loaded ${Object.keys(dotEnv).length} var(s) from .env`);
     }
     return env;
-  }
-
-  private async offerInstallCli(): Promise<void> {
-    const action = await vscode.window.showErrorMessage(
-      "Grok CLI not found.",
-      "Install Grok CLI",
-      "Set CLI Path",
-    );
-    if (action === "Install Grok CLI") {
-      const term = vscode.window.createTerminal("Install Grok");
-      term.show();
-      term.sendText(
-        'curl -fsSL https://x.ai/cli/install.sh | bash && echo "\\nDone. Reload VS Code (Ctrl+Shift+P → Developer: Reload Window) to start Grok."',
-      );
-    } else if (action === "Set CLI Path") {
-      await vscode.commands.executeCommand("workbench.action.openSettings", "grok.cliPath");
-    }
-  }
-
-  private async offerAuthSetup(cliPath: string): Promise<void> {
-    const action = await vscode.window.showErrorMessage(
-      "Grok: Authentication required. Run `grok login` to sign in.",
-      "Run grok login",
-    );
-    if (action === "Run grok login") {
-      const term = vscode.window.createTerminal("Grok Login");
-      term.show();
-      term.sendText(`"${cliPath}" login`);
-    }
   }
 
   private getHtml(webview: vscode.Webview): string {
@@ -645,16 +663,17 @@ export class GrokSidebar implements vscode.WebviewViewProvider {
   </header>
 
   <main id="messages" class="messages">
-    <div class="welcome">
+    <div class="welcome" id="welcome">
       <img src="${resourceUri("grok-mark-light.svg")}" alt="Grok" class="welcome-mark" />
       <h2>Grok Build</h2>
       <p class="welcome-byline muted">by Paweł Huryn (<a href="https://www.productcompass.pm" class="muted-link">productcompass.pm</a>)</p>
       <p id="welcome-version" class="muted">starting...</p>
-      <ul class="welcome-tips">
+      <ul class="welcome-tips" id="welcome-tips">
         <li>Type your prompt below. <kbd>Enter</kbd> to send.</li>
         <li>Slash commands: <code>/compact</code>, <code>/new</code>, <code>/plan</code>, <code>/context</code>, <code>/yolo</code>.</li>
         <li>Active files appear in the toolbar below — click to toggle in/out of context.</li>
       </ul>
+      <div id="welcome-onboarding"></div>
     </div>
   </main>
 

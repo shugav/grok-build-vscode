@@ -1,8 +1,8 @@
 {
   "name": "grok-vscode-phuryn",
   "displayName": "Grok Build",
-  "description": "VS Code sidebar for Grok Build CLI. UI wrapper with thinking traces, tool visualization, YOLO mode, model picker, effort selector, slash command autocomplete, file context chips, and permission cards. Driven by grok agent stdio over ACP. Not affiliated with xAI.",
-  "version": "1.0.1",
+  "description": "Thin VS Code sidebar client for the Grok Build CLI over Agent Client Protocol (ACP). Streams responses with thinking traces, tool calls, file chips, and permission cards with diff preview. All session state stays in the CLI. Not affiliated with xAI.",
+  "version": "1.0.3",
   "publisher": "PawelHuryn",
   "author": {
     "name": "Paweł Huryn",
@@ -18,10 +18,9 @@
     "vscode": "^1.94.0"
   },
   "categories": ["AI", "Chat"],
-  "keywords": ["grok", "grok-build", "xai", "acp", "agent", "ai", "chat", "thinking", "tool-calls", "sidebar"],
+  "keywords": ["grok", "grok-build", "xai", "xai-grok", "acp", "acp-client", "agent-client-protocol", "agent", "ai", "chat", "thinking", "tool-calls", "sidebar"],
   "icon": "resources/grok-icon.png",
   "main": "./out/extension.js",
-  "activationEvents": ["onStartupFinished"],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -133,12 +132,6 @@
           "type": "string",
           "default": "",
           "description": "Model ID to use on new sessions. Empty = CLI default."
-        },
-        "grok.defaultPermissionMode": {
-          "type": "string",
-          "enum": ["default", "acceptEdits", "auto", "dontAsk", "bypassPermissions", "plan"],
-          "default": "default",
-          "description": "Permission mode for tool execution."
         },
         "grok.includeActiveFileByDefault": {
           "type": "boolean",

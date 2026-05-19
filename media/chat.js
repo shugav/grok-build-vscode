@@ -45,6 +45,9 @@
     slashFiltered: [],
     slashActive: 0,
     pendingDiffByToolCallId: new Map(),
+    agentRenderScheduled: false,
+    thoughtBuffer: "",
+    thoughtRenderScheduled: false,
   };
 
   // ---------- icons ----------
@@ -62,6 +65,8 @@
     bot: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>`,
     listTree: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12h-8"/><path d="M21 6H8"/><path d="M21 18h-8"/><path d="M3 6v4c0 1.1.9 2 2 2h3"/><path d="M3 10v6c0 1.1.9 2 2 2h3"/></svg>`,
     zap: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>`,
+    copy: `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`,
+    check: `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
   };
 
   const MODE_META = {
@@ -107,6 +112,15 @@
       .replace(/>/g, "&gt;");
   }
 
+  function formatTime(ts) {
+    const d = new Date(ts);
+    let h = d.getHours();
+    const m = d.getMinutes();
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return `${h}:${m.toString().padStart(2, "0")} ${ampm}`;
+  }
+
   function updateModeBtn(modeId) {
     const meta = MODE_META[modeId] || MODE_META.agent;
     modeBtn.innerHTML = `${meta.icon}<span class="btn-label">${escapeHtml(meta.label)}</span>`;
@@ -125,7 +139,15 @@
     const codeBlocks = [];
     let s = raw.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, _lang, code) => {
       const i = codeBlocks.length;
-      codeBlocks.push(`<pre><code>${escapeHtml(code).trimEnd()}</code></pre>`);
+      codeBlocks.push(
+        `<div class="code-block">` +
+          `<button class="code-copy-btn" type="button" title="Copy code">` +
+            `<span class="code-copy-glyph">${ICON.copy}</span>` +
+            `<span class="code-copy-label">Copy code</span>` +
+          `</button>` +
+          `<pre><code>${escapeHtml(code).trimEnd()}</code></pre>` +
+        `</div>`
+      );
       return `\x00B${i}\x00`;
     });
 
@@ -133,8 +155,62 @@
       return t
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
         .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+        .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, text, url) => {
+          const safe = url.replace(/"/g, "&quot;");
+          return `<a href="${safe}">${text}</a>`;
+        })
         .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
         .replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
+    }
+
+    // GFM tables: header row | separator row (|---|---|) | data rows
+    const tables = [];
+    {
+      const isTableRow = (l) => /^\s*\|.+\|\s*$/.test(l);
+      const isSep = (l) => /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(l);
+      const splitRow = (l) =>
+        l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+      const srcLines = s.split('\n');
+      const kept = [];
+      let i = 0;
+      while (i < srcLines.length) {
+        if (i + 1 < srcLines.length && isTableRow(srcLines[i]) && isSep(srcLines[i + 1])) {
+          const headers = splitRow(srcLines[i]);
+          const sepCells = splitRow(srcLines[i + 1]);
+          if (headers.length === sepCells.length) {
+            const aligns = sepCells.map(c => {
+              const L = c.startsWith(':'), R = c.endsWith(':');
+              return L && R ? 'center' : R ? 'right' : L ? 'left' : '';
+            });
+            const rows = [];
+            let j = i + 2;
+            while (j < srcLines.length && isTableRow(srcLines[j])) {
+              const cells = splitRow(srcLines[j]);
+              while (cells.length < headers.length) cells.push('');
+              rows.push(cells.slice(0, headers.length));
+              j++;
+            }
+            const styleFor = (k) => aligns[k] ? ` style="text-align:${aligns[k]}"` : '';
+            let html = '<div class="md-table-wrap"><table><thead><tr>';
+            headers.forEach((h, k) => { html += `<th${styleFor(k)}>${inline(h)}</th>`; });
+            html += '</tr></thead><tbody>';
+            for (const row of rows) {
+              html += '<tr>';
+              row.forEach((c, k) => { html += `<td${styleFor(k)}>${inline(c)}</td>`; });
+              html += '</tr>';
+            }
+            html += '</tbody></table></div>';
+            const idx = tables.length;
+            tables.push(html);
+            kept.push(`\x00T${idx}\x00`);
+            i = j;
+            continue;
+          }
+        }
+        kept.push(srcLines[i]);
+        i++;
+      }
+      s = kept.join('\n');
     }
 
     // Expand inline numbered lists: "1. A 2. B 3. C" on one line → separate lines
@@ -176,9 +252,17 @@
         lastPara = false;
         continue;
       }
-      if (pendingBreak && stack.length === 0) { out += '<br><br>'; pendingBreak = false; lastPara = false; }
-      pendingBreak = false;
       lastWasBlock = false;
+
+      const tm = line.trim().match(/^\x00T(\d+)\x00$/);
+      if (tm) {
+        closeFrom(0);
+        out += `\x00T${tm[1]}\x00`;
+        lastWasBlock = true;
+        lastPara = false;
+        pendingBreak = false;
+        continue;
+      }
 
       const hm = line.match(/^(#{1,3}) (.+)$/);
       if (hm) {
@@ -186,6 +270,7 @@
         out += `<h${hm[1].length}>${inline(hm[2])}</h${hm[1].length}>`;
         lastWasBlock = true;
         lastPara = false;
+        pendingBreak = false;
         continue;
       }
 
@@ -216,17 +301,21 @@
         out += `<li>${inline(content)}`;
         stack[stack.length - 1].liOpen = true;
         lastPara = false;
+        pendingBreak = false;
         continue;
       }
 
       closeFrom(0);
-      if (lastPara) out += '<br>';
+      if (pendingBreak) { out += '<br><br>'; pendingBreak = false; }
+      else if (lastPara) out += '<br>';
       out += inline(line);
       lastPara = true;
     }
 
     closeFrom(0);
-    return out.replace(/\x00B(\d+)\x00/g, (_, i) => codeBlocks[+i]);
+    return out
+      .replace(/\x00B(\d+)\x00/g, (_, i) => codeBlocks[+i])
+      .replace(/\x00T(\d+)\x00/g, (_, i) => tables[+i]);
   }
 
   // ---------- popovers ----------
@@ -402,23 +491,101 @@
 
   function clearWelcome() {
     if (!state.welcomeVisible) return;
-    messagesEl.innerHTML = "";
+    const welcome = $("welcome");
+    if (welcome) welcome.hidden = true;
     state.welcomeVisible = false;
   }
 
-  function makeCollapsible(el) {
+  function resetForNewSession() {
+    for (const child of Array.from(messagesEl.children)) {
+      if (child.id !== "welcome") child.remove();
+    }
+    const welcome = $("welcome");
+    if (welcome) {
+      welcome.hidden = false;
+      const onb = $("welcome-onboarding");
+      if (onb) onb.innerHTML = "";
+      const tips = $("welcome-tips");
+      if (tips) tips.hidden = false;
+      const ver = $("welcome-version");
+      if (ver) ver.textContent = "starting...";
+    }
+    state.welcomeVisible = true;
+    state.pendingDiffByToolCallId.clear();
+    state.activeAgentEl = null;
+    state.activeAgentRaw = "";
+    state.activeThoughtEl = null;
+    state.activeThoughtHdrEl = null;
+    state.thoughtBuffer = "";
+    state.activeToolGroupEl = null;
+  }
+
+  function showOnboarding(mode, info) {
+    info = info || {};
+    const welcome = $("welcome");
+    if (welcome) welcome.hidden = false;
+    state.welcomeVisible = true;
+    const tips = $("welcome-tips");
+    const onb = $("welcome-onboarding");
+    const ver = $("welcome-version");
+    if (!onb) return;
+    if (mode === "missing-cli") {
+      if (tips) tips.hidden = true;
+      if (info.platform === "win32") {
+        if (ver) ver.textContent = "Windows not supported";
+        onb.innerHTML =
+          `<div class="onb">` +
+            `<p class="onb-heading">Windows isn&rsquo;t supported</p>` +
+            `<p class="onb-desc">The Grok CLI has no Windows build, so this extension can&rsquo;t run natively here. See the <a href="https://github.com/phuryn/grok-build-vscode#readme" class="onb-link">README</a> for the WSL workaround.</p>` +
+          `</div>`;
+      } else {
+        if (ver) ver.textContent = "CLI not installed";
+        onb.innerHTML =
+          `<div class="onb">` +
+            `<p class="onb-heading">Install the Grok CLI</p>` +
+            `<div class="onb-cmd">` +
+              `<code>curl -fsSL https://x.ai/cli/install.sh | bash</code>` +
+              `<button class="onb-copy" type="button" title="Copy" data-cmd="curl -fsSL https://x.ai/cli/install.sh | bash">${ICON.copy}</button>` +
+            `</div>` +
+            `<button class="onb-action" type="button" data-act="runInstall">Open terminal &amp; run</button>` +
+            `<button class="onb-action onb-secondary" type="button" data-act="recheck">Re-check connection</button>` +
+          `</div>`;
+      }
+    } else if (mode === "auth-required") {
+      if (tips) tips.hidden = true;
+      if (ver) ver.textContent = "Authentication required";
+      onb.innerHTML =
+        `<div class="onb">` +
+          `<p class="onb-heading">Sign in to continue</p>` +
+          `<p class="onb-desc"><strong>SuperGrok Heavy subscription</strong> &mdash; required for the <em>Grok Build</em> entitlement.</p>` +
+          `<button class="onb-action" type="button" data-act="runLogin">Open terminal &amp; run <code>grok /login</code></button>` +
+          `<p class="onb-or">or</p>` +
+          `<p class="onb-desc"><strong>API key</strong> &mdash; pay per token; unlocks additional models (grok-4.20, grok-4.3, grok-imagine). Get a key at <a href="https://console.x.ai" class="onb-link">console.x.ai</a>, then add to your shell or a workspace <code>.env</code>:</p>` +
+          `<div class="onb-cmd">` +
+            `<code>XAI_API_KEY=your-key-here</code>` +
+            `<button class="onb-copy" type="button" title="Copy" data-cmd="XAI_API_KEY=">${ICON.copy}</button>` +
+          `</div>` +
+          `<button class="onb-action onb-secondary" type="button" data-act="recheck">Re-check connection</button>` +
+        `</div>`;
+    } else {
+      if (tips) tips.hidden = false;
+      onb.innerHTML = "";
+    }
+  }
+
+  function makeCollapsible(el, container) {
     el.classList.add("collapsible");
     const expandBtn = document.createElement("button");
     expandBtn.className = "msg-expand-btn";
     expandBtn.textContent = "Show more";
-    el.appendChild(expandBtn);
+    container.appendChild(expandBtn);
     expandBtn.onclick = () => {
       el.classList.remove("collapsible");
       expandBtn.style.display = "none";
       const collapseBtn = document.createElement("button");
       collapseBtn.className = "msg-collapse-btn";
       collapseBtn.textContent = "Show less";
-      el.appendChild(collapseBtn);
+      container.appendChild(collapseBtn);
       collapseBtn.onclick = () => {
         el.classList.add("collapsible");
         expandBtn.style.display = "";
@@ -431,14 +598,20 @@
     clearWelcome();
     const el = document.createElement("div");
     el.className = `msg ${role}`;
-    const rolelabel = document.createElement("div");
-    rolelabel.className = "role";
-    rolelabel.textContent = role === "user" ? "you" : role === "agent" ? "grok" : role;
-    el.appendChild(rolelabel);
+    el._copyText = text || "";
+
+    let contentParent = el;
+    if (role === "user") {
+      const bubble = document.createElement("div");
+      bubble.className = "msg-bubble";
+      el.appendChild(bubble);
+      contentParent = bubble;
+    }
+
     const body = document.createElement("div");
     body.className = "body";
     if (text) body.innerHTML = renderMarkdown(text);
-    el.appendChild(body);
+    contentParent.appendChild(body);
 
     if (role === "user" && chips && chips.length > 0) {
       const chipsRow = document.createElement("div");
@@ -451,14 +624,30 @@
         tag.title = chip.relPath;
         chipsRow.appendChild(tag);
       }
-      el.appendChild(chipsRow);
+      contentParent.appendChild(chipsRow);
+    }
+
+    if (role === "user" || role === "agent") {
+      const actions = document.createElement("div");
+      actions.className = "msg-actions";
+      const copyBtn = document.createElement("button");
+      copyBtn.className = "msg-action-btn msg-copy-btn";
+      copyBtn.type = "button";
+      copyBtn.title = "Copy message";
+      copyBtn.innerHTML = `<span class="msg-action-glyph">${ICON.copy}</span>`;
+      const ts = document.createElement("span");
+      ts.className = "msg-timestamp";
+      ts.textContent = formatTime(Date.now());
+      actions.appendChild(copyBtn);
+      actions.appendChild(ts);
+      el.appendChild(actions);
     }
 
     messagesEl.appendChild(el);
     scrollToBottom();
     if (role === "user" && text) {
       requestAnimationFrame(() => {
-        if (body.scrollHeight > 56) makeCollapsible(el);
+        if (body.scrollHeight > 56) makeCollapsible(el, contentParent);
       });
     }
     return body;
@@ -472,22 +661,77 @@
     list_dir: "List", list_directory: "List",
     search_files: "Search", grep: "Search", ripgrep: "Search",
     search_replace: "Edit", edit_file: "Edit", str_replace: "Edit",
+    web_search: "Web search", search_web: "Web search",
+    web_fetch: "Fetch", webfetch: "Fetch",
   };
 
+  function toolName(call) {
+    return call.tool || call.name || call.title || "";
+  }
+  function toolFilePath(call) {
+    const r = call.rawInput || call.input || {};
+    return r.target_file || r.filePath || r.file_path || r.path ||
+      (Array.isArray(r.paths) ? r.paths[0] : "");
+  }
+  function prettyPath(p) {
+    if (!p) return "";
+    if (p === "." || p === "./") return "root folder";
+    return p.split("/").pop() || p;
+  }
+  function categorize(call) {
+    const n = toolName(call);
+    if (call.kind === "read" || /^(read_file|file_read|list_dir|list_directory)$/.test(n)) return "explore";
+    if (/^(web_search|search_web|web_fetch|webfetch)$/.test(n)) return "web";
+    return "other";
+  }
+  function summarizeTools(calls) {
+    let explore = 0, web = 0, other = 0;
+    for (const c of calls) {
+      const cat = categorize(c);
+      if (cat === "explore") explore++;
+      else if (cat === "web") web++;
+      else other++;
+    }
+    const parts = [];
+    if (explore) parts.push(`Explored ${explore} item${explore === 1 ? "" : "s"}`);
+    if (web) parts.push("searched web");
+    if (other) parts.push(`ran ${other} command${other === 1 ? "" : "s"}`);
+    return parts.length ? parts.join(", ").replace(/^./, (c) => c.toUpperCase()) : "Tool calls";
+  }
+
+  function inProgressLabel(call) {
+    const name = toolName(call);
+    const filePath = toolFilePath(call);
+    if (/^(list_dir|list_directory)$/.test(name)) {
+      return filePath ? `Listing ${prettyPath(filePath)}` : "Listing files";
+    }
+    if (/^(read_file|file_read)$/.test(name) || call.kind === "read") {
+      return filePath ? `Reading ${prettyPath(filePath)}` : "Reading file";
+    }
+    if (/^(web_search|search_web)$/.test(name)) return "Searching web";
+    if (/^(web_fetch|webfetch)$/.test(name)) return "Fetching page";
+    if (/^(grep|ripgrep|search_files)$/.test(name)) return "Searching code";
+    if (/^(write_file|file_write|write|edit_file|search_replace|str_replace)$/.test(name) || call.kind === "edit") {
+      return filePath ? `Editing ${prettyPath(filePath)}` : "Editing file";
+    }
+    if (/^(bash|execute|run_command|run_terminal_command|shell|run_bash)$/.test(name) || call.kind === "execute") {
+      return "Running command";
+    }
+    return name ? `Running ${name}` : "Running tool";
+  }
+
   function toolLabel(call) {
-    const name = call.tool || call.name || call.title || "";
+    const name = toolName(call);
     const verb = TOOL_VERB[name] ||
       (call.kind === "read" ? "Read" : call.kind === "edit" ? "Edit" :
        call.kind === "execute" ? "Run" : null);
     const r = call.rawInput || call.input || {};
-
-    const filePath = r.target_file || r.filePath || r.file_path || r.path ||
-      (Array.isArray(r.paths) ? r.paths[0] : "");
+    const filePath = toolFilePath(call);
     const command = r.command || r.cmd;
 
     let target = "";
     if (filePath) {
-      const base = filePath.split("/").pop() || filePath;
+      const base = prettyPath(filePath);
       const isRead = name === "read_file" || name === "file_read";
       if (isRead && r.offset != null && r.limit != null) {
         const end = Number(r.offset) + Number(r.limit) - 1;
@@ -520,12 +764,9 @@
       flat.textContent = toolLabel(calls[0]);
       el.replaceWith(flat);
     } else {
-      const labels = calls.map(toolLabel);
-      const summary = labels.length <= 2
-        ? labels.join(", ")
-        : `${labels[0]}, ${labels[1]} +${labels.length - 2}`;
+      el.classList.remove("in-progress");
       const hdr = el.querySelector(".tool-group-header");
-      hdr.querySelector(".tool-group-label").textContent = summary;
+      hdr.querySelector(".tool-group-label").textContent = summarizeTools(calls);
     }
     state.activeToolGroupEl = null;
   }
@@ -534,7 +775,7 @@
     clearWelcome();
     if (!state.activeToolGroupEl) {
       const el = document.createElement("div");
-      el.className = "tool-group";
+      el.className = "tool-group in-progress";
       el._calls = [];
       const hdr = document.createElement("div");
       hdr.className = "tool-group-header";
@@ -557,14 +798,14 @@
     item.textContent = toolLabel(call);
     body.appendChild(item);
 
-    const count = el._calls.length;
-    const first = toolLabel(el._calls[0]);
-    const extra = count > 1 ? ` +${count - 1}` : "";
-    hdr.innerHTML = `<span class="tool-chevron">▶</span><span class="tool-group-label">${escapeHtml(first + extra)}</span>`;
+    hdr.innerHTML =
+      `<span class="tool-group-label">${escapeHtml(inProgressLabel(call))}</span>` +
+      `<span class="tool-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>` +
+      `<span class="tool-chevron" aria-hidden="true">›</span>`;
     hdr.onclick = () => {
       const expanded = !body.hidden;
       body.hidden = expanded;
-      hdr.querySelector(".tool-chevron").textContent = expanded ? "▶" : "▼";
+      el.classList.toggle("expanded", !expanded);
     };
     scrollToBottom();
   }
@@ -589,31 +830,18 @@
     scrollToBottom();
   }
 
-  function appendThought(text) {
+  function appendThought(_text) {
     clearWelcome();
-    if (!state.activeThoughtEl) {
-      if (!state.thoughtStartTime) state.thoughtStartTime = Date.now();
-      const el = document.createElement("div");
-      el.className = "msg thinking";
-      const hdr = document.createElement("div");
-      hdr.className = "thinking-header";
-      hdr.innerHTML = `<span class="thinking-chevron">▶</span><span class="thinking-label">Thinking...</span>`;
-      const body = document.createElement("div");
-      body.className = "thinking-body";
-      body.hidden = true;
-      hdr.onclick = () => {
-        const open = body.hidden;
-        body.hidden = !open;
-        hdr.querySelector(".thinking-chevron").textContent = open ? "▼" : "▶";
-      };
-      el.appendChild(hdr);
-      el.appendChild(body);
-      messagesEl.appendChild(el);
-      state.activeThoughtEl = body;
-      state.activeThoughtHdrEl = hdr;
-    }
-    state.activeThoughtEl.textContent += text;
-    scrollToBottom();
+    if (state.activeThoughtHdrEl) return;
+    if (!state.thoughtStartTime) state.thoughtStartTime = Date.now();
+    const el = document.createElement("div");
+    el.className = "msg thinking";
+    const hdr = document.createElement("div");
+    hdr.className = "thinking-header";
+    hdr.innerHTML = `<span class="thinking-label">Thinking...</span>`;
+    el.appendChild(hdr);
+    messagesEl.appendChild(el);
+    state.activeThoughtHdrEl = hdr;
   }
 
   function appendAgent(text) {
@@ -624,7 +852,18 @@
       state.activeAgentRaw = "";
     }
     state.activeAgentRaw += text;
+    if (!state.agentRenderScheduled) {
+      state.agentRenderScheduled = true;
+      requestAnimationFrame(flushAgent);
+    }
+  }
+
+  function flushAgent() {
+    state.agentRenderScheduled = false;
+    if (!state.activeAgentEl) return;
     state.activeAgentEl.innerHTML = renderMarkdown(state.activeAgentRaw);
+    const wrapper = state.activeAgentEl.parentElement;
+    if (wrapper) wrapper._copyText = state.activeAgentRaw;
     scrollToBottom();
   }
 
@@ -836,7 +1075,12 @@
         break;
       case "initialized": {
         const ver = msg.info.version ? ` · v${msg.info.version}` : "";
-        $("welcome-version").textContent = `connected${ver}`;
+        const verEl = $("welcome-version");
+        if (verEl) verEl.textContent = `connected${ver}`;
+        const tips = $("welcome-tips");
+        if (tips) tips.hidden = false;
+        const onb = $("welcome-onboarding");
+        if (onb) onb.innerHTML = "";
         break;
       }
       case "session": {
@@ -900,6 +1144,7 @@
         addPlanCard(msg.req);
         break;
       case "promptComplete":
+        flushAgent();
         if (state.thoughtStartTime && state.activeThoughtHdrEl) {
           const secs = Math.round((Date.now() - state.thoughtStartTime) / 1000);
           const label = state.activeThoughtHdrEl.querySelector(".thinking-label");
@@ -943,14 +1188,10 @@
         addSessionContextBanner();
         break;
       case "clearMessages":
-        messagesEl.innerHTML = "";
-        state.welcomeVisible = false;
-        state.pendingDiffByToolCallId.clear();
-        state.activeAgentEl = null;
-        state.activeAgentRaw = "";
-        state.activeThoughtEl = null;
-        state.activeThoughtHdrEl = null;
-        state.activeToolGroupEl = null;
+        resetForNewSession();
+        break;
+      case "onboarding":
+        showOnboarding(msg.state, { platform: msg.platform });
         break;
       case "error":
         addError(msg.text);
@@ -964,9 +1205,7 @@
 
   sendBtn.onclick = send;
   newBtn.onclick = () => {
-    messagesEl.innerHTML = "";
-    state.welcomeVisible = false;
-    state.pendingDiffByToolCallId.clear();
+    resetForNewSession();
     vscode.postMessage({ type: "newSession" });
   };
   modeBtn.onclick = (e) => { e.stopPropagation(); openModePopover(); };
@@ -974,9 +1213,82 @@
   modePopover.addEventListener("click", (e) => e.stopPropagation());
   gearPopover.addEventListener("click", (e) => e.stopPropagation());
   document.addEventListener("click", (e) => {
+    const copyBtn = e.target.closest(".code-copy-btn");
+    if (copyBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const codeEl = copyBtn.parentElement && copyBtn.parentElement.querySelector("pre code");
+      const text = codeEl ? codeEl.textContent : "";
+      navigator.clipboard.writeText(text).then(() => {
+        const label = copyBtn.querySelector(".code-copy-label");
+        const glyph = copyBtn.querySelector(".code-copy-glyph");
+        const prevLabel = label ? label.textContent : "";
+        const prevGlyph = glyph ? glyph.innerHTML : "";
+        if (label) label.textContent = "Copied";
+        if (glyph) glyph.innerHTML = ICON.check;
+        copyBtn.classList.add("copied");
+        setTimeout(() => {
+          if (label) label.textContent = prevLabel;
+          if (glyph) glyph.innerHTML = prevGlyph;
+          copyBtn.classList.remove("copied");
+        }, 1500);
+      });
+      return;
+    }
+    const onbAction = e.target.closest(".onb-action");
+    if (onbAction) {
+      e.preventDefault();
+      e.stopPropagation();
+      const act = onbAction.dataset.act;
+      if (act === "runInstall") vscode.postMessage({ type: "runInstallCmd" });
+      else if (act === "runLogin") vscode.postMessage({ type: "runGrokLogin" });
+      else if (act === "recheck") vscode.postMessage({ type: "recheckConnection" });
+      return;
+    }
+    const onbCopy = e.target.closest(".onb-copy");
+    if (onbCopy) {
+      e.preventDefault();
+      e.stopPropagation();
+      const cmd = onbCopy.dataset.cmd || "";
+      navigator.clipboard.writeText(cmd).then(() => {
+        const prevHtml = onbCopy.innerHTML;
+        onbCopy.innerHTML = ICON.check;
+        onbCopy.classList.add("copied");
+        setTimeout(() => {
+          onbCopy.innerHTML = prevHtml;
+          onbCopy.classList.remove("copied");
+        }, 1500);
+      });
+      return;
+    }
+    const msgCopyBtn = e.target.closest(".msg-copy-btn");
+    if (msgCopyBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const msgEl = msgCopyBtn.closest(".msg");
+      const text = (msgEl && msgEl._copyText) || "";
+      navigator.clipboard.writeText(text).then(() => {
+        const glyph = msgCopyBtn.querySelector(".msg-action-glyph");
+        const prevGlyph = glyph ? glyph.innerHTML : "";
+        if (glyph) glyph.innerHTML = ICON.check;
+        msgCopyBtn.classList.add("copied");
+        setTimeout(() => {
+          if (glyph) glyph.innerHTML = prevGlyph;
+          msgCopyBtn.classList.remove("copied");
+        }, 1500);
+      });
+      return;
+    }
     closePopovers();
     const a = e.target.closest("a[href]");
-    if (a) { e.preventDefault(); vscode.postMessage({ type: "openUrl", url: a.href }); }
+    if (!a) return;
+    e.preventDefault();
+    const href = a.getAttribute("href") || "";
+    if (/^https?:\/\//i.test(href)) {
+      vscode.postMessage({ type: "openUrl", url: href });
+    } else if (!/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+      vscode.postMessage({ type: "openFile", path: href });
+    }
   });
 
   input.addEventListener("input", updateSlash);
