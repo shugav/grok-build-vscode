@@ -171,6 +171,30 @@ export class AcpClient extends EventEmitter {
     return { sessionId: res.sessionId };
   }
 
+  async loadSession(sessionId: string, modelId?: string): Promise<{ sessionId: string }> {
+    const res = await this.request("session/load", {
+      sessionId,
+      cwd: this.opts.cwd,
+      mcpServers: [],
+    });
+    this.sessionId = sessionId;
+    this.currentModelId = res?.models?.currentModelId ?? this.currentModelId;
+    if (res?.models?.availableModels) {
+      this.availableModels = res.models.availableModels.map((m: any) => ({
+        modelId: m.modelId,
+        name: m.name,
+        description: m.description,
+        totalContextTokens: m._meta?.totalContextTokens,
+      }));
+    }
+    this.emit("session", { sessionId, ...(res ?? {}) });
+    this.emit("sessionLoaded", { sessionId });
+    if (modelId && modelId !== this.currentModelId) {
+      await this.setModel(modelId);
+    }
+    return { sessionId };
+  }
+
   async setModel(modelId: string): Promise<void> {
     if (!this.sessionId) throw new Error("no session");
     const res = await this.request("session/set_model", {

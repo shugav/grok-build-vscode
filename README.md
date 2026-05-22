@@ -18,6 +18,8 @@ Works with SuperGrok Heavy subscription or xAI API key (standard Grok).
 - **VS Code diff editor for proposed edits** — click "open diff →" on a permission card to see the exact change before approving
 - **Active editor and selection as first-class context** — chips render as `@/path/to/file` references so the CLI reads the live file, not a paste-frozen copy
 - **Permission cards** with **Allow always / Allow once / Reject** instead of `[y/N]` terminal prompts
+- **Session history** — clock icon in the top bar lists past sessions (saved by the CLI in `~/.grok/sessions/`); resume, rename, or delete any of them
+- **Upload from computer** — `+` button in the bottom toolbar opens a file picker; picked files are added as `@path` chips (no contents injected)
 - **Webview-native streaming** — a single "Thinking..." line that resolves to "Thought for *N*s" (reasoning traces are hidden by design, not collapsed), grouped tool-call rows
 - **Slash autocomplete sourced live from the CLI** via `available_commands_update` — reflects exactly what your installed version supports
 - **YOLO mode toggled in-process** — no CLI restart, the session is untouched
@@ -94,7 +96,11 @@ Restarting the session (the **+** button) kills the CLI child and spawns a fresh
 
 ### File chips
 
-The active editor file is added as an **implicit** chip automatically (toggle via `grok.includeActiveFileByDefault`). Drag from the Explorer, right-click → **Grok: Send File**, or press **Alt+G** to add **explicit** chips. Chips are sent to the agent as `@/path/to/file` references — the CLI resolves them, so content stays current and doesn't bloat chat history. Hold **Shift** while dragging to embed the file content inline as a fenced code block instead.
+The active editor file is added as an **implicit** chip automatically (toggle via `grok.includeActiveFileByDefault`). Drag from the Explorer, right-click → **Grok: Send File**, press **Alt+G**, or click the **+** button in the bottom toolbar → *Upload from computer* to add **explicit** chips. Chips are sent to the agent as `@/path/to/file` references — the CLI resolves them, so content stays current and doesn't bloat chat history. Hold **Shift** while dragging to embed the file content inline as a fenced code block instead.
+
+### Session history
+
+Click the clock icon in the top bar to see all sessions saved by the CLI for the current project (grok writes them to `~/.grok/sessions/<urlencoded-cwd>/`). Click a row to resume — the extension calls `session/load` and grok replays the conversation. Hover a row to rename (pencil) or delete (trash). Names default to the first message sent in that session; rename overrides live in VS Code's `globalState` and never touch grok's files.
 
 ### Permission cards with diff preview
 
@@ -136,11 +142,12 @@ When the panel opens (or you click **+** for a new session):
 | [src/chips.ts](src/chips.ts) | File-chip CRUD (pure) |
 | [src/prompt-builder.ts](src/prompt-builder.ts) | Chip → prompt-string with `@path` refs and fenced blocks |
 | [src/slash-filter.ts](src/slash-filter.ts) | Slash-command autocomplete filter |
+| [src/sessions.ts](src/sessions.ts) | Disk-driven session listing/delete + customName overrides (pure) |
 | [media/chat.{js,css}](media/) | Webview UI |
 
 ### Design choices worth knowing
 
-- **Pure modules split for testability.** `acp-dispatch`, `chips`, `prompt-builder`, `slash-filter`, `cli-locator` have no `vscode` import, no spawn, no network — they run under Vitest in a Node process. 61 tests in under half a second.
+- **Pure modules split for testability.** `acp-dispatch`, `chips`, `prompt-builder`, `slash-filter`, `cli-locator`, `sessions` have no `vscode` import, no spawn, no network — they run under Vitest in a Node process. 76 tests in under half a second.
 - **YOLO is client-side only.** It's a single `autoApprove` flag in [src/sidebar.ts](src/sidebar.ts) — toggling Agent ↔ YOLO doesn't restart the CLI or even send a message. The CLI keeps asking; the extension just answers "allow always" automatically.
 - **Cross-platform without per-OS branches.** [src/terminal-manager.ts](src/terminal-manager.ts) uses `spawn(cmd, { shell: true })` so Node picks `cmd.exe` or `/bin/sh`. [src/cli-locator.ts](src/cli-locator.ts) prefers `HOME`/`USERPROFILE` env over `os.homedir()` so tests can override paths.
 - **Streaming is rAF-coalesced.** `agent_message_chunk` and `agent_thought_chunk` buffer into a raw string and re-render at most once per animation frame — keeps long responses smooth even under fast chunk rates.
@@ -243,17 +250,18 @@ VS Code commands (not Grok slash commands). Open with **Ctrl+Shift+P** / **Cmd+S
 
 ```bash
 npm install
-npm test         # 61 tests, <1s, vitest — no VS Code, no spawn (except terminal-manager)
+npm test         # 76 tests, <1s, vitest — no VS Code, no spawn (except terminal-manager)
 npm run package  # → grok-vscode-phuryn-<version>.vsix
 ```
 
-Pure tests are the floor — every change should keep 61 green. The split was made *specifically* so protocol bugs can be caught without spinning up VS Code:
+Pure tests are the floor — every change should keep 76 green. The split was made *specifically* so protocol bugs can be caught without spinning up VS Code:
 
 - `test/acp-dispatch.test.ts` — wire format, `parseAcpLine`, `routeSessionUpdate`, response builders
 - `test/chips.test.ts` — file-chip CRUD
 - `test/prompt-builder.test.ts` — chip → prompt assembly
 - `test/slash-filter.test.ts` — autocomplete filter
 - `test/cli-locator.test.ts` — binary discovery
+- `test/sessions.test.ts` — disk-driven session listing, naming fallback, delete
 - `test/terminal-manager.test.ts` — real `/bin/sh` spawn smoke
 
 See [TESTS.md](TESTS.md) for the full breakdown of what's covered vs deferred to a future `@vscode/test-electron` integration suite.

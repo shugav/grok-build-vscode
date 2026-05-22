@@ -6,14 +6,18 @@
   const input = $("input");
   const sendBtn = $("send-btn");
   const newBtn = $("new-btn");
+  const historyBtn = $("history-btn");
   const modeBtn = $("mode-btn");
   const gearBtn = $("gear-btn");
+  const addBtn = $("add-btn");
   const chipsEl = $("chips");
   const donutArc = $("donut-arc");
   const donutLabel = $("donut-label");
   const slashPopover = $("slash-popover");
   const modePopover = $("mode-popover");
   const gearPopover = $("gear-popover");
+  const addPopover = $("add-popover");
+  const historyPopover = $("history-popover");
 
   const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"];
   const EFFORT_TOOLTIPS = {
@@ -48,6 +52,10 @@
     agentRenderScheduled: false,
     thoughtBuffer: "",
     thoughtRenderScheduled: false,
+    sessions: [],
+    activeSessionId: null,
+    sessionSearch: "",
+    renamingSessionId: null,
   };
 
   // ---------- icons ----------
@@ -67,6 +75,11 @@
     zap: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>`,
     copy: `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`,
     check: `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+    clock: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+    plus: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>`,
+    upload: `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>`,
+    trash: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>`,
+    pencil: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>`,
   };
 
   const MODE_META = {
@@ -129,11 +142,34 @@
   }
 
   newBtn.innerHTML = ICON.squarePen;
+  historyBtn.innerHTML = ICON.clock;
   sendBtn.innerHTML = ICON.arrowUp;
   gearBtn.innerHTML = ICON.gear;
+  addBtn.innerHTML = ICON.plus;
   updateModeBtn("agent");
 
   // ---------- markdown ----------
+
+  const FILE_EXTS = new Set([
+    "ts","tsx","js","jsx","mjs","cjs","json","md","mdx","toml","yml","yaml",
+    "css","scss","sass","less","html","htm","xml","svg",
+    "py","rb","go","rs","java","kt","kts","swift","c","cc","cpp","cxx","h","hh","hpp",
+    "cs","php","lua","sh","bash","zsh","fish","ps1","bat","cmd",
+    "txt","lock","env","ini","cfg","conf","gitignore","dockerignore",
+    "vue","svelte","astro","sql","prisma","graphql","gql",
+  ]);
+
+  function looksLikeFileRef(s) {
+    if (!s || s.length > 200) return false;
+    // strip optional :line or #Lstart-Lend suffix grok may emit
+    const core = s.replace(/[:#].*$/, "");
+    // Reject if it contains shell-ish chars or whitespace
+    if (/[\s"'`<>|&;]/.test(core)) return false;
+    // Must contain a dot for the extension
+    const m = core.match(/\.([A-Za-z0-9]+)$/);
+    if (!m) return false;
+    return FILE_EXTS.has(m[1].toLowerCase());
+  }
 
   function renderMarkdown(raw) {
     const codeBlocks = [];
@@ -154,7 +190,13 @@
     function inline(t) {
       return t
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-        .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+        .replace(/`([^`\n]+)`/g, (_, code) => {
+          if (looksLikeFileRef(code)) {
+            const safe = code.replace(/"/g, "&quot;");
+            return `<a href="${safe}" class="file-ref-link"><code>${code}</code></a>`;
+          }
+          return `<code>${code}</code>`;
+        })
         .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, text, url) => {
           const safe = url.replace(/"/g, "&quot;");
           return `<a href="${safe}">${text}</a>`;
@@ -323,6 +365,8 @@
   function closePopovers() {
     modePopover.hidden = true;
     gearPopover.hidden = true;
+    addPopover.hidden = true;
+    historyPopover.hidden = true;
   }
 
   function positionPopover(popover, btn) {
@@ -337,6 +381,22 @@
       const leftOffset = btnRect.left - composerRect.left;
       if (leftOffset + pw > composerRect.width) {
         popover.style.left = Math.max(0, composerRect.width - pw) + "px";
+      }
+    });
+  }
+
+  function positionDropdownPopover(popover, btn) {
+    const parentRect = popover.parentElement.getBoundingClientRect();
+    const btnRect = btn.getBoundingClientRect();
+    popover.style.bottom = "auto";
+    popover.style.top = (btnRect.bottom - parentRect.top + 4) + "px";
+    popover.style.left = (btnRect.left - parentRect.left) + "px";
+    popover.style.right = "auto";
+    requestAnimationFrame(() => {
+      const pw = popover.getBoundingClientRect().width;
+      const leftOffset = btnRect.left - parentRect.left;
+      if (leftOffset + pw > parentRect.width) {
+        popover.style.left = Math.max(0, parentRect.width - pw) + "px";
       }
     });
   }
@@ -485,6 +545,178 @@
     }
     positionPopover(modePopover, modeBtn);
     modePopover.hidden = false;
+  }
+
+  function openAddPopover() {
+    if (!addPopover.hidden) { closePopovers(); return; }
+    closePopovers();
+    addPopover.innerHTML = "";
+    const item = document.createElement("div");
+    item.className = "toolbar-popover-item";
+    item.innerHTML = `<span class="add-item-icon">${ICON.upload}</span><span>Upload from computer</span>`;
+    item.onclick = (e) => {
+      e.stopPropagation();
+      vscode.postMessage({ type: "pickFile" });
+      closePopovers();
+    };
+    addPopover.appendChild(item);
+    positionPopover(addPopover, addBtn);
+    addPopover.hidden = false;
+  }
+
+  function formatRelativeTime(ts) {
+    if (!ts) return "";
+    const diff = Date.now() - ts;
+    const sec = Math.round(diff / 1000);
+    if (sec < 60) return `${sec}s ago`;
+    const min = Math.round(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.round(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    const day = Math.round(hr / 24);
+    if (day < 7) return `${day}d ago`;
+    const d = new Date(ts);
+    return d.toLocaleDateString();
+  }
+
+  function renderHistoryList() {
+    historyPopover.innerHTML = "";
+
+    const searchWrap = document.createElement("div");
+    searchWrap.className = "history-search-wrap";
+    const search = document.createElement("input");
+    search.type = "text";
+    search.className = "history-search";
+    search.placeholder = "Search sessions…";
+    search.value = state.sessionSearch;
+    search.oninput = () => {
+      state.sessionSearch = search.value;
+      renderSessionRows();
+    };
+    search.onkeydown = (e) => { e.stopPropagation(); };
+    search.onclick = (e) => e.stopPropagation();
+    searchWrap.appendChild(search);
+    historyPopover.appendChild(searchWrap);
+
+    const list = document.createElement("div");
+    list.className = "history-list";
+    historyPopover.appendChild(list);
+
+    function renderSessionRows() {
+      list.innerHTML = "";
+      const q = state.sessionSearch.trim().toLowerCase();
+      const filtered = state.sessions.filter((s) => {
+        if (!q) return true;
+        return (s.displayName || "").toLowerCase().includes(q);
+      });
+      if (filtered.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "history-empty";
+        empty.textContent = state.sessions.length === 0 ? "No sessions yet." : "No matches.";
+        list.appendChild(empty);
+        return;
+      }
+      for (const s of filtered) {
+        list.appendChild(renderSessionRow(s));
+      }
+    }
+
+    function renderSessionRow(s) {
+      const row = document.createElement("div");
+      const active = s.id === state.activeSessionId;
+      row.className = "history-row" + (active ? " active" : "");
+
+      const main = document.createElement("div");
+      main.className = "history-row-main";
+
+      if (state.renamingSessionId === s.id) {
+        const inp = document.createElement("input");
+        inp.type = "text";
+        inp.className = "history-rename";
+        inp.value = s.displayName;
+        inp.onclick = (e) => e.stopPropagation();
+        inp.onkeydown = (e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") {
+            vscode.postMessage({ type: "renameSession", id: s.id, name: inp.value });
+            state.renamingSessionId = null;
+          } else if (e.key === "Escape") {
+            state.renamingSessionId = null;
+            renderSessionRows();
+          }
+        };
+        inp.onblur = () => {
+          if (state.renamingSessionId === s.id) {
+            vscode.postMessage({ type: "renameSession", id: s.id, name: inp.value });
+            state.renamingSessionId = null;
+          }
+        };
+        main.appendChild(inp);
+        setTimeout(() => { inp.focus(); inp.select(); }, 0);
+      } else {
+        const name = document.createElement("div");
+        name.className = "history-row-name";
+        name.textContent = s.displayName || "Untitled";
+        name.title = s.rawSummary || s.displayName || "";
+        name.onclick = (e) => {
+          e.stopPropagation();
+          if (active) { closePopovers(); return; }
+          vscode.postMessage({ type: "resumeSession", id: s.id });
+          closePopovers();
+        };
+        main.appendChild(name);
+
+        const meta = document.createElement("div");
+        meta.className = "history-row-meta";
+        const parts = [];
+        if (s.numMessages) parts.push(`${s.numMessages} msg`);
+        parts.push(formatRelativeTime(s.updatedAt));
+        meta.textContent = parts.join(" · ");
+        main.appendChild(meta);
+      }
+
+      row.appendChild(main);
+
+      const actions = document.createElement("div");
+      actions.className = "history-row-actions";
+      const renameBtn = document.createElement("button");
+      renameBtn.className = "history-action-btn";
+      renameBtn.innerHTML = ICON.pencil;
+      renameBtn.title = "Rename";
+      renameBtn.onclick = (e) => {
+        e.stopPropagation();
+        state.renamingSessionId = s.id;
+        renderSessionRows();
+      };
+      const delBtn = document.createElement("button");
+      delBtn.className = "history-action-btn history-action-danger";
+      delBtn.innerHTML = ICON.trash;
+      delBtn.title = "Delete";
+      delBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (confirm(`Delete session "${s.displayName}"? This cannot be undone.`)) {
+          vscode.postMessage({ type: "deleteSession", id: s.id });
+        }
+      };
+      actions.appendChild(renameBtn);
+      actions.appendChild(delBtn);
+      row.appendChild(actions);
+
+      return row;
+    }
+
+    renderSessionRows();
+  }
+
+  function openHistoryPopover() {
+    if (!historyPopover.hidden) { closePopovers(); return; }
+    closePopovers();
+    state.sessionSearch = "";
+    state.renamingSessionId = null;
+    renderHistoryList();
+    positionDropdownPopover(historyPopover, historyBtn);
+    historyPopover.hidden = false;
+    vscode.postMessage({ type: "listSessions" });
   }
 
   // ---------- messages ----------
@@ -1198,6 +1430,11 @@
         break;
       case "xaiNotification":
         break;
+      case "sessions":
+        state.sessions = msg.entries || [];
+        state.activeSessionId = msg.activeId || null;
+        if (!historyPopover.hidden) renderHistoryList();
+        break;
     }
   });
 
@@ -1210,8 +1447,12 @@
   };
   modeBtn.onclick = (e) => { e.stopPropagation(); openModePopover(); };
   gearBtn.onclick = (e) => { e.stopPropagation(); openGearPopover(); };
+  addBtn.onclick = (e) => { e.stopPropagation(); openAddPopover(); };
+  historyBtn.onclick = (e) => { e.stopPropagation(); openHistoryPopover(); };
   modePopover.addEventListener("click", (e) => e.stopPropagation());
   gearPopover.addEventListener("click", (e) => e.stopPropagation());
+  addPopover.addEventListener("click", (e) => e.stopPropagation());
+  historyPopover.addEventListener("click", (e) => e.stopPropagation());
   document.addEventListener("click", (e) => {
     const copyBtn = e.target.closest(".code-copy-btn");
     if (copyBtn) {
