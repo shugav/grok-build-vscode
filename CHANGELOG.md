@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Reasoning effort is now compatibility-gated for ACP startup.** `grok.defaultEffort` is still saved, but current `grok-build` ACP sessions start with the CLI default effort because `reasoningEffort` is rejected by the backend. This prevents the sidebar from crashing with `Grok exited (code 2)` after selecting an effort level such as Max.
+- **Regression coverage for effort startup.** Added pure argument-builder coverage and a fake-CLI ACP integration case that fails if `--reasoning-effort` is forwarded to `grok agent stdio`.
+
 ## 1.2.0 — 2026-05-28
 
 ### Plan mode is now enabled
