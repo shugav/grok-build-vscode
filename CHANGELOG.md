@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.2 — TBD
+## 1.2.2 — 2026-05-29
 
 ### Plan mode
 

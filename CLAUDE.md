@@ -4,7 +4,7 @@ VS Code sidebar extension for **xAI's Grok Build CLI**, driven by `grok agent st
 
 ## Status
 
-v1.2.1 (local; 1.0.3 is the latest published on the VS Code Marketplace). 221 tests passing, all grok-free (CI never spawns the binary; grok-dependent probes live separately in `research/*.cjs`). Smoke-tested end-to-end against `grok` v0.1.211 on Linux and Windows-via-WSL, and against the **native Windows build** `grok` 0.2.3 (`irm https://x.ai/cli/install.ps1 | iex`) — `cli-locator` resolves `grok.cmd`/`grok.exe` and `terminal-manager` uses `shell:true`. The native-Windows smoke test surfaced a handful of webview regressions (history popover that never closed, session rows only clickable on the label, reasoning traces no longer expandable, a cluttered welcome screen), all fixed in this build. Plan mode is now **enabled** and enforced client-side (see `research/plan-mode.md` § Resolution).
+v1.2.2 (local; 1.0.3 is the latest published on the VS Code Marketplace). 221 tests passing, all grok-free (CI never spawns the binary; grok-dependent probes live separately in `research/*.cjs`). Smoke-tested end-to-end against `grok` v0.1.211 on Linux and Windows-via-WSL, and against the **native Windows build** `grok` 0.2.3 (`irm https://x.ai/cli/install.ps1 | iex`) — `cli-locator` resolves `grok.cmd`/`grok.exe` and `terminal-manager` uses `shell:true`. The native-Windows smoke test surfaced a handful of webview regressions (history popover that never closed, session rows only clickable on the label, reasoning traces no longer expandable, a cluttered welcome screen), all fixed in this build. Plan mode is now **enabled** and enforced client-side (see `research/plan-mode.md` § Resolution).
 
 ## Module map
 
@@ -36,7 +36,7 @@ Pure modules (`acp-dispatch`, `chips`, `prompt-builder`, `slash-filter`, `cli-lo
 ```bash
 npm install
 npm test         # 221 tests, ~1.4s, vitest — all grok-free (incl. happy-dom DOM tests + fake-CLI ACP integration tests)
-npm run package  # → grok-vscode-phuryn-1.2.1.vsix
+npm run package  # → grok-vscode-phuryn-1.2.2.vsix
 ```
 
 ## Install
@@ -56,7 +56,7 @@ See `README.md § Install` for the full per-platform matrix.
 - `session/request_permission` → chat card with `allow-always` / `allow-once` / `reject-once`, diff editor preview for `kind:"edit"`
 - `session/set_mode` wired; the picker exposes **Agent**, **Plan**, and **YOLO**. The CLI's non-plan mode id is `"default"` (not `"agent"`), captured as `ACT_MODE_ID` in `sidebar.ts`.
 - **Plan mode is enforced client-side** (mirror of YOLO). The CLI's `x.ai/exit_plan_mode` still treats any client response — result *or* error — as approval (re-verified broken in 0.2.3), so we don't rely on it. Instead `src/plan-gate.ts` gates the two *mandatory* server→client choke points: `fs/write_text_file` (block writes resolving inside the workspace cwd) and `terminal/create` (block anything not on the read-only allowlist). grok's own `~/.grok/sessions/<…>/plan.md` write lands *outside* the workspace and is allowed (and snooped to recover the plan text — `exit_plan_mode` arrives with `planContent: null`). Approve → drop the gate + send an "implement it now" follow-up prompt; Keep planning → gate stays up. Entering plan mode *any* way (incl. agent-initiated `current_mode_update: plan`) raises the gate; it's lowered only by explicit user action, never auto-lowered by CLI mode flapping. For the full pedagogical course with diagrams and hands-on guidance, see `research/understanding-plan-mode.md`.
-- `--reasoning-effort` flag at agent spawn (`low | medium | high | xhigh | max`)
+- `grok.defaultEffort` is persisted but **not** forwarded at spawn — current `grok-build` ACP sessions reject `reasoningEffort` (forwarding `--reasoning-effort` exits the CLI with code 2). Startup args are built by the pure `buildGrokAgentArgs()` (`agent stdio`). See `src/acp.ts` + #4.
 - `available_commands_update` → slash autocomplete
 - `current_mode_update` → bottom-toolbar mode button (the top bar was removed in 0.9.0)
 - `_meta.totalTokens` → context donut
