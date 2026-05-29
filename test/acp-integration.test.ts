@@ -58,6 +58,20 @@ function waitFor<T>(client: AcpClient, event: string, timeoutMs = 2000): Promise
   });
 }
 
+/** Poll until the captured stderr matches `re`. The fake CLI writes its
+ *  *_RESPONSE marker to stderr just before the stdout response that resolves the
+ *  prompt; stderr can lag stdout across pipes (reliably so on Linux), so asserting
+ *  synchronously after the prompt resolves is racy. */
+async function waitForStderr(arr: string[], re: RegExp, timeoutMs = 3000): Promise<void> {
+  const start = Date.now();
+  while (!re.test(arr.join(""))) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`stderr never matched ${re}; got: ${JSON.stringify(arr.join(""))}`);
+    }
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+
 describe("ACP integration (real subprocess, fake CLI)", () => {
   let client: AcpClient;
   let workspace: string;
@@ -70,7 +84,11 @@ describe("ACP integration (real subprocess, fake CLI)", () => {
     workspace = fs.mkdtempSync(path.join(os.tmpdir(), "grok-int-ws-"));
     planHome = fs.mkdtempSync(path.join(os.tmpdir(), "grok-int-plan-"));
     const planPath = path.join(planHome, ".grok", "sessions", "cwd-x", "sess-y", "plan.md");
-    stderr = [];
+    // Bind the listener to a per-test local array, not the shared `stderr`
+    // variable — otherwise a prior test's still-alive client can push late
+    // stderr into the current test's array (cross-test bleed, flaky on Linux).
+    const captured: string[] = [];
+    stderr = captured;
 
     client = new AcpClient({
       cliPath: fixtureCli(),
@@ -82,7 +100,7 @@ describe("ACP integration (real subprocess, fake CLI)", () => {
       },
       log: () => {},
     });
-    client.on("stderr", (t: string) => stderr.push(t));
+    client.on("stderr", (t: string) => captured.push(t));
 
     // Wire up minimal fs/terminal handlers. Real fs writes for plan.md so we
     // can verify content lands on disk; in-memory terminal handler so we can
@@ -107,6 +125,8 @@ describe("ACP integration (real subprocess, fake CLI)", () => {
   });
 
   afterEach(() => {
+    // Stop the old client emitting into anything before the next test starts.
+    try { client.removeAllListeners(); } catch { /* */ }
     try { (client as any).proc?.kill(); } catch { /* best-effort */ }
     try { fs.rmSync(workspace, { recursive: true, force: true }); } catch { /* */ }
     try { fs.rmSync(planHome, { recursive: true, force: true }); } catch { /* */ }
@@ -153,6 +173,7 @@ describe("ACP integration (real subprocess, fake CLI)", () => {
     // arrives as forward-slash; the host's gate works either way.
     expect(blocked[0].target.replace(/\\/g, "/")).toBe(workspace.replace(/\\/g, "/") + "/file.ts");
     // The fake CLI got an error reply (visible on its stderr).
+    await waitForStderr(stderr, /WRITE_RESPONSE.*"error"/);
     expect(stderr.join("")).toMatch(/WRITE_RESPONSE.*"error"/);
     // And no file landed on disk.
     expect(fs.existsSync(path.join(workspace, "file.ts"))).toBe(false);

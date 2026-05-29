@@ -91,6 +91,20 @@ describe("session rows (regression: only the label was clickable)", () => {
     expect(types(posted)).not.toContain("resumeSession");
   });
 
+  it("hides the delete button for the active session, keeps it for others", () => {
+    const h = bootWebview();
+    click(h.window, $(h.doc, "history-btn"));
+    h.posted.length = 0;
+    dispatch(h.window, { type: "sessions", entries, activeId: "s1" });
+    const rows = h.doc.querySelectorAll(".history-row");
+    // s1 is active → no delete button (it's the live session; delete wouldn't stick).
+    expect(rows[0].querySelector(".history-action-danger")).toBeNull();
+    // s2 is not active → delete button present.
+    expect(rows[1].querySelector(".history-action-danger")).not.toBeNull();
+    // Rename stays available on the active row.
+    expect(rows[0].querySelector(".history-action-btn")).not.toBeNull();
+  });
+
   it("rename button enters rename mode and does NOT resume", () => {
     const { window, posted, doc } = openWithSessions();
     const renameBtn = doc.querySelectorAll(".history-row .history-action-btn")[0] as HTMLElement;

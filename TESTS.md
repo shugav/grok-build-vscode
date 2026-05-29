@@ -119,7 +119,7 @@ happy-dom test (see [Webview DOM tests](#webview-dom-tests) below). Drives the s
 
 ### `test/acp-integration.test.ts` — ACP wire layer + plan-mode gate (6 tests)
 
-Spawns the fake `grok agent stdio` from `test/fixtures/fake-grok-acp.cjs` (a ~150-line ACP server encoding only what the protocol requires, not grok version quirks) and drives `src/acp.ts` AcpClient against it over real JSON-RPC stdio. Cross-platform: `.cmd` wrapper on Windows, `.sh` wrapper elsewhere; subprocess startup adds ~50–100ms per test (same order as terminal-manager).
+Spawns the fake `grok agent stdio` from `test/fixtures/fake-grok-acp.cjs` (a ~150-line ACP server encoding only what the protocol requires, not grok version quirks), and drives `src/acp.ts` AcpClient against it over real JSON-RPC stdio. Cross-platform: `.cmd` wrapper on Windows, `.sh` wrapper elsewhere; subprocess startup adds ~50–100ms per test (same order as terminal-manager).
 
 - **Lifecycle** — spawn → initialize → session/new succeeds; a basic prompt round-trips with `_meta.totalTokens`.
 - **Plan-snoop** — grok's plan.md write (outside the workspace) is allowed AND emits `planFileContent` with the snooped text; the host's `exitPlanRequest` event fires with that content; the file actually lands on disk.

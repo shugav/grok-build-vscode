@@ -496,11 +496,18 @@ See design doc for the full state machine diagram.`;
     this.post({ type: "modeChanged", modeId: "agent" });
     if (resumeId) this.post({ type: "clearMessages" });
 
+    // Lock the composer (spinner, disabled) for the whole session-start window —
+    // start() + newSession()/load + primer — so a prompt can't be sent before
+    // the session exists, which would otherwise throw "no session". primeGrok
+    // clears it on success; the failure paths below clear it too.
+    this.post({ type: "setBusy", value: true, locked: true });
+
     const cfg = vscode.workspace.getConfiguration("grok");
     const cliPath = locateGrokCli(cfg.get<string>("cliPath", ""));
     this.cliPath = cliPath || undefined;
     if (!cliPath) {
       if (gen !== this.sessionGen) return undefined;
+      this.post({ type: "setBusy", value: false });
       this.post({ type: "onboarding", state: "missing-cli", platform: process.platform });
       return undefined;
     }
@@ -753,6 +760,7 @@ See design doc for the full state machine diagram.`;
       const msg = (err as any).message ?? String(err);
       client.dispose();
       this.client = undefined;
+      this.post({ type: "setBusy", value: false });
       if (/auth|unauthor|forbidden|401|403|api[_\s-]?key|credential|sign.?in/i.test(msg)) {
         this.post({ type: "onboarding", state: "auth-required" });
       } else {

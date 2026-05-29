@@ -152,6 +152,75 @@ describe("plan-history queue (restore-flow rendering)", () => {
     ]);
   });
 
+  it("strips the [Plan ...] protocol marker from a replayed verdict comment", () => {
+    const { window, doc } = bootWebview();
+    plays(window, [
+      { type: "historyReplay", active: true },
+      { type: "userMessageChunk", text: "real question" },
+      { type: "messageChunk", text: "answer" },
+      // grok echoes the wire-level prompt verbatim on replay, marker and all.
+      { type: "userMessageChunk", text: "[Plan cancelled] tell me what you saw" },
+      { type: "messageChunk", text: "acknowledged" },
+      { type: "historyReplay", active: false },
+    ]);
+    expect(transcript(doc)).toEqual([
+      "user: real question",
+      "agent: answer",
+      "user: tell me what you saw", // marker hidden, comment kept
+      "agent: acknowledged",
+    ]);
+  });
+
+  it("suppresses a marker-only verdict bubble, keeps grok's reply, and positions the plan before it", () => {
+    const { window, doc } = bootWebview();
+    plays(window, [
+      { type: "planHistoryQueue", plans: [{ text: "PX", verdict: "abandoned", afterUserMessage: 1 }] },
+      { type: "historyReplay", active: true },
+      { type: "userMessageChunk", text: "make a plan" },
+      { type: "messageChunk", text: "here is a plan" },
+      { type: "userMessageChunk", text: "[Plan cancelled]" }, // marker-only: no comment
+      { type: "messageChunk", text: "ok, cancelled" },
+      { type: "historyReplay", active: false },
+    ]);
+    expect(transcript(doc)).toEqual([
+      "user: make a plan",
+      "agent: here is a plan",
+      "plan[Cancelled]: PX",   // drained before the (suppressed) verdict turn
+      "agent: ok, cancelled",  // grok's reply to the cancel still renders
+    ]);
+  });
+
+  it("marker-only verdicts don't desync later plan positions (count stays aligned)", () => {
+    const { window, doc } = bootWebview();
+    plays(window, [
+      { type: "planHistoryQueue", plans: [
+        { text: "P1", verdict: "abandoned", afterUserMessage: 1 },
+        { text: "P2", verdict: "rejected", afterUserMessage: 2 },
+      ]},
+      { type: "historyReplay", active: true },
+      { type: "userMessageChunk", text: "u1" },
+      { type: "messageChunk", text: "a1" },
+      { type: "userMessageChunk", text: "[Plan cancelled]" }, // marker-only, not counted
+      { type: "messageChunk", text: "a2" },
+      { type: "userMessageChunk", text: "u2" },
+      { type: "messageChunk", text: "a3" },
+      { type: "userMessageChunk", text: "[Plan rejected] do better" },
+      { type: "messageChunk", text: "a4" },
+      { type: "historyReplay", active: false },
+    ]);
+    expect(transcript(doc)).toEqual([
+      "user: u1",
+      "agent: a1",
+      "plan[Cancelled]: P1", // before the marker-only verdict (afterUserMessage 1)
+      "agent: a2",
+      "user: u2",
+      "agent: a3",
+      "plan[Rejected]: P2",  // before the reject-with-comment (afterUserMessage 2)
+      "user: do better",     // marker stripped
+      "agent: a4",
+    ]);
+  });
+
   it("multiple plans at the SAME position drain together (all rendered before next user msg)", () => {
     const { window, doc } = bootWebview();
     plays(window, [
@@ -299,8 +368,11 @@ describe("plan card verdict labels (live exit_plan_mode flow)", () => {
 
       const card = doc.querySelector(".card.plan")!;
       expect(card.classList.contains("resolved")).toBe(true);
-      expect(btn.classList.contains("chosen")).toBe(true);
-      expect(card.querySelector(".plan-verdict-label")!.textContent).toBe(c.label);
+      // Buttons/comment box are removed; a colored verdict label is shown.
+      expect(card.querySelector(".card-actions")).toBeNull();
+      const label = card.querySelector(".plan-verdict-label")!;
+      expect(label.textContent).toBe(c.label);
+      expect(label.classList.contains("plan-verdict-" + c.verdict)).toBe(true);
       expect(posted[0]).toMatchObject({ verdict: c.verdict });
     }
   });
