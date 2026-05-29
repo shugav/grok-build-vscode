@@ -17,6 +17,23 @@
 // whichever way the host replies to exit_plan_mode.
 
 const readline = require("readline");
+
+// Accept the startup arg shapes the extension actually sends: `agent stdio`,
+// optionally with `--reasoning-effort <value>` (an agent-level flag, before the
+// stdio subcommand). Mirror grok's validation: only the real effort values are
+// allowed; anything else (incl. the bogus `max`) exits 2 like the CLI does.
+const VALID_EFFORT = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
+const argv = process.argv.slice(2);
+function argvOk(a) {
+  if (a.length === 2) return a[0] === "agent" && a[1] === "stdio";
+  if (a.length === 4) return a[0] === "agent" && a[1] === "--reasoning-effort" && VALID_EFFORT.has(a[2]) && a[3] === "stdio";
+  return false;
+}
+if (!argvOk(argv)) {
+  process.stderr.write(`unexpected argv: ${JSON.stringify(argv)}\n`);
+  process.exit(2);
+}
+
 const rl = readline.createInterface({ input: process.stdin });
 
 let nextId = 1000;
@@ -28,12 +45,22 @@ function notify(method, params) { send({ jsonrpc: "2.0", method, params }); }
 function callClient(method, params) {
   const id = nextId++;
   send({ jsonrpc: "2.0", id, method, params });
-  return new Promise((resolve) => { pendingReplies.set(id, resolve); });
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      pendingReplies.delete(id);
+      resolve({ error: { code: -32099, message: `Timed out waiting for ${method}` } });
+    }, 2000);
+    pendingReplies.set(id, (reply) => {
+      clearTimeout(timer);
+      resolve(reply);
+    });
+  });
 }
 
 const SESSION_ID = "fake-session-1";
 const PLAN_PATH = process.env.FAKE_PLAN_PATH || "/tmp/fake-grok-home/.grok/sessions/cwd-x/sess-y/plan.md";
 const WORKSPACE_FILE = (process.env.FAKE_WORKSPACE_ROOT || "/tmp/fake-workspace") + "/file.ts";
+const RELATIVE_WORKSPACE_FILE = "relative-file.ts";
 
 rl.on("line", async (line) => {
   if (!line.trim()) return;
@@ -104,8 +131,22 @@ async function runScenario(promptId, text) {
       return;
     }
 
+    if (text.includes("SCENARIO_RELATIVE_WORKSPACE_WRITE")) {
+      const writeResp = await callClient("fs/write_text_file", { sessionId: SESSION_ID, path: RELATIVE_WORKSPACE_FILE, content: "// relative file" });
+      process.stderr.write(`WRITE_RESPONSE: ${JSON.stringify(writeResp)}\n`);
+      respondOk(promptId, { stopReason: "end_turn", _meta: { totalTokens: 50 } });
+      return;
+    }
+
     if (text.includes("SCENARIO_MUTATING_TERMINAL")) {
       const termResp = await callClient("terminal/create", { sessionId: SESSION_ID, command: "rm -rf /tmp/foo" });
+      process.stderr.write(`TERMINAL_RESPONSE: ${JSON.stringify(termResp)}\n`);
+      respondOk(promptId, { stopReason: "end_turn", _meta: { totalTokens: 50 } });
+      return;
+    }
+
+    if (text.includes("SCENARIO_MUTATING_READONLY_HEAD_TERMINAL")) {
+      const termResp = await callClient("terminal/create", { sessionId: SESSION_ID, command: "sed -i s/a/b/ file.ts" });
       process.stderr.write(`TERMINAL_RESPONSE: ${JSON.stringify(termResp)}\n`);
       respondOk(promptId, { stopReason: "end_turn", _meta: { totalTokens: 50 } });
       return;

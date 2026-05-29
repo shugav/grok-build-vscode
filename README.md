@@ -139,7 +139,7 @@ When the panel opens (or you click **+** for a new session):
 1. Locate the `grok` binary: `grok.cliPath` setting → `~/.grok/bin/grok` → `PATH`.
 2. Spawn `grok agent stdio` as a background child — visible in `ps` / Activity Monitor, never opens a terminal window.
 3. Send `initialize` → `session/new` → `session/set_model` over stdio.
-4. If `grok.defaultEffort` is set, pass `--reasoning-effort <level>` at spawn time.
+4. If `grok.defaultEffort` is set, forward it as `--reasoning-effort <value>` before the `stdio` subcommand (values match grok's accepted set: `none`/`minimal`/`low`/`medium`/`high`/`xhigh`).
 5. Stream `session/update` notifications (messages, thoughts, tool calls, permission requests) back to the chat.
 
 ### Module map
@@ -187,7 +187,7 @@ Each action appears in chat:
 
 ### Reasoning effort
 
-Click the **gear** icon → effort dots to choose Low → Max. Changing effort restarts the session with `--reasoning-effort <level>`. If chat history exists, a dialog offers **Summarize & Restart** (asks Grok for a summary, starts a fresh session, sends the summary as context) or **Just Restart** (discards).
+Click the **gear** icon → effort dots to pick a reasoning-effort level (`none` → `xhigh`). It's forwarded to the CLI as `--reasoning-effort`; changing it restarts the session (with an optional *Summarize & Restart* to carry context forward). Some subscription tiers may still reject effort at the backend.
 
 ### Model picker
 
@@ -226,7 +226,7 @@ Or edit the config files directly via gear → *Open global config* / *Open proj
 |---|---|---|
 | `grok.cliPath` | `""` | Path to the `grok` binary. Empty = auto-discover (`~/.grok/bin/grok` → PATH). |
 | `grok.defaultModel` | `""` | Model ID for new sessions. Empty = CLI default. |
-| `grok.defaultEffort` | `""` | Reasoning effort (`low` / `medium` / `high` / `xhigh` / `max`). Empty = CLI default. Changing this restarts the session. |
+| `grok.defaultEffort` | `""` | Reasoning effort forwarded as `--reasoning-effort` to `grok agent stdio` (`none` / `minimal` / `low` / `medium` / `high` / `xhigh`). Empty = CLI default. Changing it restarts the session. |
 | `grok.includeActiveFileByDefault` | `true` | Auto-add the active editor as a context chip. |
 | `grok.useCtrlEnterToSend` | `false` | When true, Enter inserts a newline and Ctrl/Cmd+Enter sends. |
 

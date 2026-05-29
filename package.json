@@ -2,7 +2,7 @@
   "name": "grok-vscode-phuryn",
   "displayName": "Grok Build",
   "description": "Thin VS Code sidebar client for the Grok Build CLI over Agent Client Protocol (ACP). Streams responses with thinking traces, tool calls, file chips, and permission cards with diff preview. All session state stays in the CLI. Not affiliated with xAI.",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "publisher": "PawelHuryn",
   "author": {
     "name": "Paweł Huryn",
@@ -163,22 +163,24 @@
           "type": "string",
           "enum": [
             "",
+            "none",
+            "minimal",
             "low",
             "medium",
             "high",
-            "xhigh",
-            "max"
+            "xhigh"
           ],
           "enumDescriptions": [
             "CLI default (no flag passed to grok agent stdio)",
+            "None",
+            "Minimal",
             "Low — faster, lighter reasoning",
             "Medium",
             "High",
-            "XHigh",
-            "Max — deepest reasoning, slowest"
+            "XHigh — deepest reasoning, slowest"
           ],
           "default": "",
-          "description": "Reasoning effort passed as --reasoning-effort to grok agent stdio. Changing this restarts the session."
+          "description": "Reasoning effort passed as --reasoning-effort to grok agent stdio. Values match the grok CLI's accepted set (none, minimal, low, medium, high, xhigh). Changing this restarts the session."
         },
         "grok.useCtrlEnterToSend": {
           "type": "boolean",

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { AcpClient } from "../src/acp";
+import { AcpClient, buildGrokAgentArgs } from "../src/acp";
 
 // Unit tests for AcpClient internals that don't need a real subprocess. We
 // stand up the client with a fake writable proc and drive `request`/`onLine`
@@ -31,5 +31,20 @@ describe("AcpClient.request timer lifecycle", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// #3/#4 (thanks @shugav for the crash report): the startup crash was the bogus
+// `max` value, not reasoningEffort itself — grok accepts none|minimal|low|medium|
+// high|xhigh, and the flag must precede the `stdio` subcommand.
+describe("buildGrokAgentArgs", () => {
+  it("starts ACP sessions with the stdio subcommand when no effort is set", () => {
+    expect(buildGrokAgentArgs()).toEqual(["agent", "stdio"]);
+  });
+
+  it("forwards a valid effort as --reasoning-effort before the stdio subcommand", () => {
+    expect(buildGrokAgentArgs("high")).toEqual(["agent", "--reasoning-effort", "high", "stdio"]);
+    expect(buildGrokAgentArgs("none")).toEqual(["agent", "--reasoning-effort", "none", "stdio"]);
+    expect(buildGrokAgentArgs("xhigh")).toEqual(["agent", "--reasoning-effort", "xhigh", "stdio"]);
   });
 });

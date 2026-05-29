@@ -19,7 +19,7 @@ import {
   shouldBlockWrite,
 } from "./plan-gate";
 
-export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
+export type EffortLevel = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export interface AcpClientOptions {
   cliPath: string;
@@ -91,6 +91,14 @@ export interface TerminalHandler {
 
 type Pending = { resolve: (v: any) => void; reject: (e: any) => void; timer?: ReturnType<typeof setTimeout> };
 
+export function buildGrokAgentArgs(effort?: EffortLevel): string[] {
+  // `--reasoning-effort` is an `agent`-level flag, so it must precede the `stdio`
+  // subcommand (after `stdio` the CLI errors "unexpected argument"). Only the
+  // values grok actually accepts are offered (none|minimal|low|medium|high|xhigh);
+  // the bogus `max` we used to expose made grok exit with code 2 (see #3/#4).
+  return effort ? ["agent", "--reasoning-effort", effort, "stdio"] : ["agent", "stdio"];
+}
+
 export class AcpClient extends EventEmitter {
   private proc?: ChildProcessWithoutNullStreams;
   private rl?: Interface;
@@ -122,11 +130,7 @@ export class AcpClient extends EventEmitter {
   }
 
   async start(): Promise<void> {
-    const args: string[] = ["agent"];
-    if (this.opts.effort) {
-      args.push("--reasoning-effort", this.opts.effort);
-    }
-    args.push("stdio");
+    const args = buildGrokAgentArgs(this.opts.effort);
 
     this.opts.log(`spawning ${this.opts.cliPath} ${args.join(" ")} (cwd=${this.opts.cwd})`);
     // Node 18+ refuses to spawn .cmd/.bat without `shell: true` on Windows
