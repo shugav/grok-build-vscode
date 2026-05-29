@@ -82,12 +82,27 @@
     // the next user message starts. Keeps the chat clean of our session-start
     // priming when the user resumes a session.
     suppressReplayTurn: false,
+    // While replaying, suppress just the user bubble for a marker-only verdict
+    // message ([Plan cancelled] with no comment) — grok's response to it still
+    // renders. Distinct from suppressReplayTurn (which hides the whole turn).
+    skipUserBubble: false,
   };
 
   // Matches any version of the extension's primer (v1, v2, …). Used during
   // session replay to detect and hide the primer + grok's ack from the
   // restored conversation.
   const PRIMER_PATTERN = /^\s*\[grok-build-vscode primer v\d+\]/;
+
+  // The host prepends a plan-verdict protocol marker ([Plan approved|rejected|
+  // cancelled]) to the wire-level prompt so grok can recognize the verdict. It's
+  // grok-only plumbing — never shown live. On replay grok echoes the raw prompt,
+  // so strip the marker here to keep the restored view consistent with live.
+  const PLAN_MARKER_PATTERN = /^\s*\[Plan (approved|rejected|cancelled)\]\s*/i;
+  function stripPlanMarker(text) {
+    const m = PLAN_MARKER_PATTERN.exec(text || "");
+    if (!m) return { matched: false, rest: text };
+    return { matched: true, rest: (text || "").slice(m[0].length) };
+  }
 
   // ---------- icons ----------
 
@@ -705,16 +720,20 @@
         state.renamingSessionId = s.id;
         renderSessionRows();
       };
-      const delBtn = document.createElement("button");
-      delBtn.className = "history-action-btn history-action-danger";
-      delBtn.innerHTML = ICON.trash;
-      delBtn.title = "Delete";
-      delBtn.onclick = (e) => {
-        e.stopPropagation();
-        vscode.postMessage({ type: "deleteSession", id: s.id, name: s.displayName });
-      };
       actions.appendChild(renameBtn);
-      actions.appendChild(delBtn);
+      // No delete for the active session: it's the live conversation and the CLI
+      // re-persists it, so a delete wouldn't stick. Rename is still fine.
+      if (!active) {
+        const delBtn = document.createElement("button");
+        delBtn.className = "history-action-btn history-action-danger";
+        delBtn.innerHTML = ICON.trash;
+        delBtn.title = "Delete";
+        delBtn.onclick = (e) => {
+          e.stopPropagation();
+          vscode.postMessage({ type: "deleteSession", id: s.id, name: s.displayName });
+        };
+        actions.appendChild(delBtn);
+      }
       row.appendChild(actions);
 
       return row;
@@ -770,6 +789,7 @@
     state.planHistoryQueue = [];
     state.userMsgCount = 0;
     state.suppressReplayTurn = false;
+    state.skipUserBubble = false;
     hidePlanProcessing();
   }
 
@@ -1112,6 +1132,7 @@
     if (state.suppressReplayTurn) return; // thinking inside the primer turn
     hidePlanProcessing(); // thought streaming → indicator obsolete
     state.activeUserEl = null;
+    state.skipUserBubble = false; // marker-only verdict turn is over
     clearWelcome();
     if (!state.activeThoughtEl) {
       if (!state.thoughtStartTime) state.thoughtStartTime = Date.now();
@@ -1153,6 +1174,7 @@
     if (state.suppressReplayTurn) return; // grok's response to the primer
     hidePlanProcessing(); // agent output started — clear the indicator
     state.activeUserEl = null;
+    state.skipUserBubble = false; // marker-only verdict turn is over
     closeToolGroup();
     clearWelcome();
     if (!state.activeAgentEl) {
@@ -1204,7 +1226,7 @@
       commitAgentTurn();
     }
     clearWelcome();
-    if (!state.activeUserEl) {
+    if (!state.activeUserEl && !state.skipUserBubble) {
       // A new user message is starting. If we're replaying and this message is
       // the extension's primer, suppress it AND grok's response to it — both
       // are extension plumbing the user never typed, and we don't want them
@@ -1214,13 +1236,31 @@
         return;
       }
       state.suppressReplayTurn = false;
-      // Drain saved plan cards that should appear BEFORE this user message
-      // (i.e. they were resolved after the previous user msg in the live session).
+      // Drain saved plan cards that should appear BEFORE this user message — the
+      // verdict message that resolved a plan is the boundary, so drain first even
+      // for a marker-only verdict that itself renders no bubble.
       drainPlanHistory(state.userMsgCount);
+      if (state.replaying) {
+        const mk = stripPlanMarker(text);
+        if (mk.matched) {
+          // A plan-verdict protocol message. Live never counted or showed a
+          // marker-only verdict (e.g. plain "[Plan cancelled]"), so skip it here
+          // too — both to hide the grok-only marker and to keep userMsgCount
+          // aligned with the afterUserMessage positions the host persisted.
+          if (!mk.rest.trim()) {
+            state.skipUserBubble = true;
+            return;
+          }
+          // Marker + comment: drop the marker, keep the user's words. Live
+          // counted this (the comment), so we count it here too.
+          text = mk.rest;
+        }
+      }
       state.userMsgCount += 1;
       state.activeUserEl = addMessage("user", "");
       state.activeUserRaw = "";
     }
+    if (state.skipUserBubble) return; // marker-only verdict: no user bubble
     if (state.suppressReplayTurn) return; // still inside the primer's user message
     state.activeUserRaw += text;
     state.activeUserEl.innerHTML = renderMarkdown(state.activeUserRaw);
@@ -1383,14 +1423,13 @@
           ...(comment ? { comment } : {}),
         });
         el.classList.add("resolved");
-        b.classList.add("chosen");
-        feedback.disabled = true;
-        for (const x of actions.querySelectorAll("button")) x.disabled = true;
-        // Append a small status line so the verdict stays visible after the
-        // buttons are disabled (matters more for the history view, but useful
-        // here too while scrolling back through a session).
+        // Collapse to the same clean representation as a restored history card:
+        // drop the buttons + comment box and show one colored verdict label.
+        // (The comment, if any, lands as its own user bubble below.)
+        actions.remove();
+        feedback.remove();
         const status = document.createElement("div");
-        status.className = "plan-verdict-label";
+        status.className = "plan-verdict-label plan-verdict-" + verdict;
         status.textContent = VERDICT_LABEL[verdict] ?? "Resolved";
         el.appendChild(status);
       };

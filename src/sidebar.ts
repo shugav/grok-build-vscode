@@ -13,6 +13,7 @@ import {
   toggleChip,
 } from "./chips";
 import { buildPrompt } from "./prompt-builder";
+import { parseFileRef, shouldReadFileInline } from "./file-ref";
 import { pickRejectOption, shouldRejectPermission } from "./plan-gate";
 import { appendPlanEntry, decideRestoreState } from "./plan-restore";
 import { GROK_PRIMER } from "./grok-primer";
@@ -495,11 +496,18 @@ See design doc for the full state machine diagram.`;
     this.post({ type: "modeChanged", modeId: "agent" });
     if (resumeId) this.post({ type: "clearMessages" });
 
+    // Lock the composer (spinner, disabled) for the whole session-start window —
+    // start() + newSession()/load + primer — so a prompt can't be sent before
+    // the session exists, which would otherwise throw "no session". primeGrok
+    // clears it on success; the failure paths below clear it too.
+    this.post({ type: "setBusy", value: true, locked: true });
+
     const cfg = vscode.workspace.getConfiguration("grok");
     const cliPath = locateGrokCli(cfg.get<string>("cliPath", ""));
     this.cliPath = cliPath || undefined;
     if (!cliPath) {
       if (gen !== this.sessionGen) return undefined;
+      this.post({ type: "setBusy", value: false });
       this.post({ type: "onboarding", state: "missing-cli", platform: process.platform });
       return undefined;
     }
@@ -752,6 +760,7 @@ See design doc for the full state machine diagram.`;
       const msg = (err as any).message ?? String(err);
       client.dispose();
       this.client = undefined;
+      this.post({ type: "setBusy", value: false });
       if (/auth|unauthor|forbidden|401|403|api[_\s-]?key|credential|sign.?in/i.test(msg)) {
         this.post({ type: "onboarding", state: "auth-required" });
       } else {
@@ -791,18 +800,16 @@ See design doc for the full state machine diagram.`;
         this.postChips();
         break;
       case "openFile": {
-        const m = msg.path.match(/^([^#]+?)(?:#L(\d+)(?:-L?(\d+))?)?$/i);
-        let p = m ? m[1] : msg.path;
-        const startStr = m && m[2];
-        const endStr = m && m[3];
+        const ref = parseFileRef(msg.path);
+        let p = ref.path;
         if (!path.isAbsolute(p)) {
           const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
           if (root) p = path.join(root, p);
         }
         const uri = vscode.Uri.file(p);
-        if (startStr) {
-          const startLine = Math.max(0, Number(startStr) - 1);
-          const endLine = endStr ? Math.max(startLine, Number(endStr) - 1) : startLine;
+        if (ref.startLine != null) {
+          const startLine = Math.max(0, ref.startLine - 1);
+          const endLine = ref.endLine != null ? Math.max(startLine, ref.endLine - 1) : startLine;
           try {
             const doc = await vscode.workspace.openTextDocument(uri);
             await vscode.window.showTextDocument(doc, {
@@ -1070,13 +1077,22 @@ See design doc for the full state machine diagram.`;
     const uri = vscode.Uri.file(absPath);
     const relPath = vscode.workspace.asRelativePath(uri);
     if (shiftHeld) {
-      let totalLines = 1;
+      // Only read the whole file (to count lines for an inline selection) when
+      // it's small enough not to freeze the host thread. Large files fall back
+      // to a plain no-selection chip.
+      let totalLines: number | undefined;
       try {
-        totalLines = fs.readFileSync(absPath, "utf8").split("\n").length;
+        if (shouldReadFileInline(fs.statSync(absPath).size)) {
+          totalLines = fs.readFileSync(absPath, "utf8").split("\n").length;
+        }
       } catch {
-        /* keep 1 */
+        /* fall back to a no-selection chip */
       }
-      this.chips.push(makeExplicitChip(absPath, relPath, 1, totalLines));
+      this.chips.push(
+        totalLines != null
+          ? makeExplicitChip(absPath, relPath, 1, totalLines)
+          : makeExplicitChip(absPath, relPath),
+      );
     } else {
       this.chips.push(makeExplicitChip(absPath, relPath));
     }

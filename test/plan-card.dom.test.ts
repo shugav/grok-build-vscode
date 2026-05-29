@@ -120,7 +120,7 @@ describe("plan card (real chat.js in a DOM)", () => {
     });
   });
 
-  it("resolves the card, highlights the chosen button, shows verdict label, disables inputs", () => {
+  it("resolves the card: drops buttons + comment box, shows the colored verdict label", () => {
     const { window, doc } = bootWebview();
     dispatch(window, { type: "exitPlanRequest", req: { id: 14, plan: "p" } });
 
@@ -130,10 +130,13 @@ describe("plan card (real chat.js in a DOM)", () => {
     click(window, rejectBtn);
 
     expect(card.classList.contains("resolved")).toBe(true);
-    expect(rejectBtn.classList.contains("chosen")).toBe(true);
-    expect((card.querySelector("textarea.plan-feedback") as HTMLTextAreaElement).disabled).toBe(true);
-    expect(buttons.every((b) => b.disabled)).toBe(true);
-    expect(card.querySelector(".plan-verdict-label")!.textContent).toBe("Rejected");
+    // Collapses to the same clean representation as a restored history card:
+    // buttons + comment box removed, a single colored verdict label remains.
+    expect(card.querySelector(".card-actions")).toBeNull();
+    expect(card.querySelector("textarea.plan-feedback")).toBeNull();
+    const label = card.querySelector(".plan-verdict-label")!;
+    expect(label.textContent).toBe("Rejected");
+    expect(label.classList.contains("plan-verdict-rejected")).toBe(true);
   });
 
   it("renders a read-only plan-history card with the persisted verdict label", () => {
