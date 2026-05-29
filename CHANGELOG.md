@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Plan-mode gate hardening.** Relative workspace write paths are now resolved against the workspace root before containment checks, and common mutating forms of otherwise read-only-looking commands (shell separators, write/exec flags, mutating Git forms, and `npm audit --fix`) are blocked before plan approval.
+
 ## 1.2.0 — 2026-05-28
 
 ### Plan mode is now enabled
