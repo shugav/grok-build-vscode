@@ -18,6 +18,7 @@ import {
   shouldBlockTerminal,
   shouldBlockWrite,
 } from "./plan-gate";
+import { resolveGrokHome } from "./sessions";
 
 export type EffortLevel = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
@@ -400,7 +401,11 @@ export class AcpClient extends EventEmitter {
         if (isPlanFileWrite(params.path)) {
           this.emit("planFileContent", params.content ?? "");
         }
-        if (shouldBlockWrite(params.path, { active: this.planActive, workspaceRoot: this.opts.cwd })) {
+        if (shouldBlockWrite(params.path, {
+          active: this.planActive,
+          workspaceRoot: this.opts.cwd,
+          grokHome: resolveGrokHome(this.opts.env ?? process.env),
+        })) {
           this.emit("mutationBlocked", { kind: "write", target: params.path });
           this.respondError(id, PLAN_BLOCKED_CODE, PLAN_BLOCKED_WRITE_MSG);
           return;

@@ -63,7 +63,8 @@ function canonicalTarget(target: string, root: string): { norm: string; windows:
 /**
  * True if `target` resolves to `root` itself or somewhere beneath it. Used to
  * decide whether a write lands in the user's workspace (block) or outside it
- * (allow — e.g. grok's `~/.grok/.../plan.md`).
+ * (allow). Grok's own `~/.grok/.../plan.md` is handled separately because a
+ * user may open their home directory as the workspace root.
  */
 export function isInsideWorkspace(target: string, root: string): boolean {
   if (!target || !root) return false;
@@ -234,11 +235,14 @@ export function isReadOnlyCommand(command: string): boolean {
 export interface PlanGateContext {
   active: boolean;
   workspaceRoot: string;
+  grokHome?: string;
 }
 
 /** Should `fs/write_text_file` to `path` be refused right now? */
 export function shouldBlockWrite(path: string, ctx: PlanGateContext): boolean {
-  return ctx.active && isInsideWorkspace(path, ctx.workspaceRoot);
+  const isOwnPlanFile = isPlanFileWrite(path) &&
+    (!ctx.grokHome || isInsideWorkspace(path, ctx.grokHome));
+  return ctx.active && !isOwnPlanFile && isInsideWorkspace(path, ctx.workspaceRoot);
 }
 
 /** Should `terminal/create` of `command` be refused right now? */
