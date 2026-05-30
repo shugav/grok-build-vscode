@@ -17,7 +17,7 @@ const WIN_WORKSPACE_WRITE = "\\\\?\\C:\\Users\\Dell\\AppData\\Local\\Temp\\grok-
 const WIN_PLAN_FILE =
   "\\\\?\\C:\\Users\\Dell\\.grok\\sessions\\C%3A%5CUsers%5CDell%5CAppData%5CLocal%5CTemp%5Cgrok-plan-exp-GyuZ1W\\019e6b7e\\plan.md";
 
-const active = (root: string): PlanGateContext => ({ active: true, workspaceRoot: root });
+const active = (root: string, grokHome?: string): PlanGateContext => ({ active: true, workspaceRoot: root, grokHome });
 const off = (root: string): PlanGateContext => ({ active: false, workspaceRoot: root });
 
 describe("isInsideWorkspace", () => {
@@ -64,7 +64,25 @@ describe("shouldBlockWrite", () => {
   });
 
   it("ALLOWS grok writing its own plan.md while planning (outside workspace)", () => {
-    expect(shouldBlockWrite(WIN_PLAN_FILE, active(WIN_ROOT))).toBe(false);
+    expect(shouldBlockWrite(WIN_PLAN_FILE, active(WIN_ROOT, "C:\\Users\\Dell\\.grok"))).toBe(false);
+  });
+
+  it("ALLOWS grok writing its own plan.md even when the home dir is the workspace", () => {
+    const posixHomePlan = "/home/u/.grok/sessions/%2Fhome%2Fu/019e7608/plan.md";
+    expect(isPlanFileWrite(posixHomePlan)).toBe(true);
+    expect(isInsideWorkspace(posixHomePlan, "/home/u")).toBe(true);
+    expect(shouldBlockWrite(posixHomePlan, active("/home/u", "/home/u/.grok"))).toBe(false);
+
+    expect(isPlanFileWrite(WIN_PLAN_FILE)).toBe(true);
+    expect(isInsideWorkspace(WIN_PLAN_FILE, "C:\\Users\\Dell")).toBe(true);
+    expect(shouldBlockWrite(WIN_PLAN_FILE, active("C:\\Users\\Dell", "C:\\Users\\Dell\\.grok"))).toBe(false);
+  });
+
+  it("does not treat an arbitrary project-local .grok/sessions plan file as grok's own plan.md", () => {
+    const projectPlan = "/home/u/proj/.grok/sessions/%2Fhome%2Fu%2Fproj/019e7608/plan.md";
+    expect(isPlanFileWrite(projectPlan)).toBe(true);
+    expect(isInsideWorkspace(projectPlan, "/home/u/proj")).toBe(true);
+    expect(shouldBlockWrite(projectPlan, active("/home/u/proj", "/home/u/.grok"))).toBe(true);
   });
 
   it("allows any write when the gate is off (normal Agent mode never blocks)", () => {
